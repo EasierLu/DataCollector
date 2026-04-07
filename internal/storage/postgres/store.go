@@ -8,7 +8,6 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 
 	"github.com/datacollector/datacollector/internal/config"
-	"github.com/datacollector/datacollector/internal/storage"
 	"github.com/datacollector/datacollector/internal/storage/migrations"
 )
 
@@ -16,9 +15,6 @@ import (
 type PostgresStore struct {
 	db *sql.DB
 }
-
-// 编译时检查接口实现
-var _ storage.DataStore = (*PostgresStore)(nil)
 
 // New 创建 PostgreSQL 存储实例
 func New(cfg *config.Config) (*PostgresStore, error) {

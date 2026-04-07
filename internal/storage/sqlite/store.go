@@ -11,7 +11,6 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 
 	"github.com/datacollector/datacollector/internal/config"
-	"github.com/datacollector/datacollector/internal/storage"
 	"github.com/datacollector/datacollector/internal/storage/migrations"
 )
 
@@ -20,9 +19,6 @@ type SQLiteStore struct {
 	db *sql.DB
 	mu sync.Mutex
 }
-
-// 编译时检查接口实现
-var _ storage.DataStore = (*SQLiteStore)(nil)
 
 // New 创建 SQLite 存储实例
 func New(cfg *config.Config) (*SQLiteStore, error) {

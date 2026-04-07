@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/natefinch/lumberjack"
+	"gopkg.in/natefinch/lumberjack.v2"
 
 	"github.com/datacollector/datacollector/internal/auth"
 	"github.com/datacollector/datacollector/internal/collector"

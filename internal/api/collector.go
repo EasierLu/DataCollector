@@ -1,8 +1,6 @@
 package api
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -287,10 +285,4 @@ func (h *CollectorHandler) RegisterRoutes(r *gin.RouterGroup) {
 		collect.POST("/:source_id", h.CollectData)
 		collect.POST("/:source_id/batch", h.CollectBatchData)
 	}
-}
-
-// hashToken 计算 token 的 SHA-256 哈希
-func hashToken(token string) string {
-	h := sha256.Sum256([]byte(token))
-	return hex.EncodeToString(h[:])
 }
