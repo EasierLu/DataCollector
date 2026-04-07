@@ -2,9 +2,10 @@ package server
 
 import (
 	"context"
-	"html/template"
+	"io/fs"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -72,12 +73,6 @@ func (s *Server) Setup() {
 	}
 	s.engine.Use(auth.SetupCheckMiddleware(initChecker))
 
-	// 注册静态资源路由
-	s.registerStaticRoutes()
-
-	// 注册页面路由
-	s.RegisterPageRoutes()
-
 	// 注册 API 路由
 	api.RegisterRoutes(s.engine, s.store, s.config, s.jwtManager, s.processor, s.rateLimiter)
 
@@ -86,6 +81,9 @@ func (s *Server) Setup() {
 		auth.JWTAuthMiddleware(s.jwtManager),
 		s.hub.HandleWebSocket,
 	)
+
+	// 注册 SPA 静态资源和 fallback 路由
+	s.serveSPA()
 }
 
 // Engine 返回 gin.Engine 供 http.Server 使用
@@ -93,88 +91,48 @@ func (s *Server) Engine() *gin.Engine {
 	return s.engine
 }
 
-// registerStaticRoutes 注册静态资源路由
-func (s *Server) registerStaticRoutes() {
-	// 静态资源路由
-	staticFS := http.FS(web.StaticFS)
-	fileServer := http.FileServer(staticFS)
-
-	s.engine.GET("/static/*filepath", func(c *gin.Context) {
-		c.Request.URL.Path = "/static/" + c.Param("filepath")
-		fileServer.ServeHTTP(c.Writer, c.Request)
-	})
-}
-
-// RegisterPageRoutes 注册前端页面路由
-func (s *Server) RegisterPageRoutes() {
-	// 加载 HTML 模板
-	tmpl, err := template.ParseFS(web.TemplateFS, "templates/*.html")
+// serveSPA 提供 Vue SPA 静态资源服务，并处理前端路由 fallback
+func (s *Server) serveSPA() {
+	// 从 embed.FS 中获取 dist 子目录
+	distFS, err := fs.Sub(web.DistFS, "dist")
 	if err != nil {
-		s.logger.Error("failed to parse templates", "error", err)
+		s.logger.Error("failed to get dist sub filesystem", "error", err)
 		return
 	}
-	s.engine.SetHTMLTemplate(tmpl)
 
-	// 页面路由映射
-	// GET / -> 重定向到 /dashboard
-	s.engine.GET("/", func(c *gin.Context) {
-		c.Redirect(http.StatusFound, "/dashboard")
+	// 读取 index.html 内容用于 SPA fallback
+	indexHTML, err := fs.ReadFile(distFS, "index.html")
+	if err != nil {
+		s.logger.Error("failed to read index.html", "error", err)
+		return
+	}
+
+	fileServer := http.FileServer(http.FS(distFS))
+
+	// 使用 NoRoute 处理所有未匹配的路由
+	s.engine.NoRoute(func(c *gin.Context) {
+		path := c.Request.URL.Path
+
+		// API 路由返回 404 JSON
+		if strings.HasPrefix(path, "/api/") {
+			c.JSON(http.StatusNotFound, gin.H{
+				"code":    404,
+				"message": "API not found",
+			})
+			return
+		}
+
+		// 尝试作为静态文件提供（JS、CSS、图片等）
+		filePath := strings.TrimPrefix(path, "/")
+		if filePath != "" {
+			if f, err := distFS.Open(filePath); err == nil {
+				f.Close()
+				fileServer.ServeHTTP(c.Writer, c.Request)
+				return
+			}
+		}
+
+		// 其他所有路由返回 index.html（SPA 前端路由）
+		c.Data(http.StatusOK, "text/html; charset=utf-8", indexHTML)
 	})
-
-	// GET /login -> 渲染 login.html
-	s.engine.GET("/login", func(c *gin.Context) {
-		c.HTML(http.StatusOK, "login.html", gin.H{
-			"version": version,
-		})
-	})
-
-	// GET /setup -> 渲染 setup.html
-	s.engine.GET("/setup", func(c *gin.Context) {
-		c.HTML(http.StatusOK, "setup.html", gin.H{
-			"version": version,
-		})
-	})
-
-	// GET /dashboard -> 渲染 dashboard.html
-	s.engine.GET("/dashboard", func(c *gin.Context) {
-		c.HTML(http.StatusOK, "dashboard.html", gin.H{
-			"version": version,
-		})
-	})
-
-	// GET /sources -> 渲染 sources.html
-	s.engine.GET("/sources", func(c *gin.Context) {
-		c.HTML(http.StatusOK, "sources.html", gin.H{
-			"version": version,
-		})
-	})
-
-	// GET /sources/:id -> 渲染 source_detail.html
-	s.engine.GET("/sources/:id", func(c *gin.Context) {
-		c.HTML(http.StatusOK, "source_detail.html", gin.H{
-			"version": version,
-		})
-	})
-
-	// GET /data -> 渲染 data.html
-	s.engine.GET("/data", func(c *gin.Context) {
-		c.HTML(http.StatusOK, "data.html", gin.H{
-			"version": version,
-		})
-	})
-
-	// GET /settings -> 渲染 settings.html
-	s.engine.GET("/settings", func(c *gin.Context) {
-		c.HTML(http.StatusOK, "settings.html", gin.H{
-			"version": version,
-		})
-	})
-}
-
-// version 变量需要在 routes.go 中定义
-var version string
-
-// SetVersion 设置版本号（由 main.go 调用）
-func SetVersion(v string) {
-	version = v
 }

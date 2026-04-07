@@ -11,3 +11,9 @@ type Statistics struct {
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
+
+// TrendPoint 趋势数据点
+type TrendPoint struct {
+	Date  string `json:"date"`
+	Count int64  `json:"count"`
+}

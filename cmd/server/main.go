@@ -81,9 +81,6 @@ func main() {
 	processor := collector.NewProcessor(store, aggregator.EventChannel())
 	logger.Info("data processor initialized")
 
-	// 设置版本号
-	server.SetVersion(version)
-
 	// 10. 创建并配置 HTTP Server
 	srv := server.NewServer(cfg, store, jwtManager, processor, hub, logger)
 	srv.Setup()

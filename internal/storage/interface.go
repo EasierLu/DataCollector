@@ -47,6 +47,7 @@ type DataStore interface {
 	GetStatsBySourceAndDateRange(ctx context.Context, sourceID int64, startDate, endDate string) ([]*model.Statistics, error)
 	GetTotalCountByDateRange(ctx context.Context, startDate, endDate string) (int64, error)
 	GetCountBySourceID(ctx context.Context, sourceID int64) (int64, error)
+	GetDailyTrend(ctx context.Context, startDate, endDate string, sourceID, tokenID int64) ([]*model.TrendPoint, error)
 
 	// 系统配置
 	GetConfig(ctx context.Context, key string) (string, error)

@@ -1,6 +1,8 @@
 package api
 
 import (
+	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/datacollector/datacollector/internal/model"
@@ -90,4 +92,47 @@ func (h *DashboardHandler) GetDashboard(c *gin.Context) {
 		TotalSources:  totalSources,
 		RecentRecords: recentRecords,
 	})
+}
+
+// GetDashboardTrend 获取仪表盘趋势数据
+// GET /api/v1/admin/dashboard/trend
+func (h *DashboardHandler) GetDashboardTrend(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	startDate := c.Query("start_date")
+	endDate := c.Query("end_date")
+	if startDate == "" || endDate == "" {
+		model.SendError(c, http.StatusBadRequest, model.CodeQueryParamError, "start_date 和 end_date 为必填参数")
+		return
+	}
+
+	var sourceID, tokenID int64
+	if v := c.Query("source_id"); v != "" {
+		parsed, err := strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			model.SendError(c, http.StatusBadRequest, model.CodeQueryParamError, "source_id 参数无效")
+			return
+		}
+		sourceID = parsed
+	}
+	if v := c.Query("token_id"); v != "" {
+		parsed, err := strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			model.SendError(c, http.StatusBadRequest, model.CodeQueryParamError, "token_id 参数无效")
+			return
+		}
+		tokenID = parsed
+	}
+
+	points, err := h.store.GetDailyTrend(ctx, startDate, endDate, sourceID, tokenID)
+	if err != nil {
+		model.SendError(c, http.StatusInternalServerError, model.CodeInternalError, "")
+		return
+	}
+
+	if points == nil {
+		points = make([]*model.TrendPoint, 0)
+	}
+
+	model.SendSuccess(c, points)
 }

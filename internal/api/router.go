@@ -69,6 +69,7 @@ func RegisterRoutes(
 
 				// 仪表盘
 				adminAuth.GET("/dashboard", dashboardHandler.GetDashboard)
+			adminAuth.GET("/dashboard/trend", dashboardHandler.GetDashboardTrend)
 
 				// 数据源管理
 				sources := adminAuth.Group("/sources")
