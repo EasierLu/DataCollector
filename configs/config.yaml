@@ -1,0 +1,40 @@
+server:
+  host: "0.0.0.0"
+  port: 8080
+  mode: "debug"  # debug, release
+
+tls:
+  enabled: false
+  cert_file: ""
+  key_file: ""
+
+database:
+  driver: "sqlite"  # sqlite, postgres
+  sqlite:
+    path: "./data/datacollector.db"
+  postgres:
+    host: "localhost"
+    port: 5432
+    user: "datacollector"
+    password: ""
+    dbname: "datacollector"
+    sslmode: "disable"
+
+jwt:
+  secret: "change-me-to-a-secure-random-string"
+  expiration: "24h"
+
+collector:
+  max_body_size: 1048576  # 1MB
+  rate_limit_per_token: 100  # per minute
+  rate_limit_per_ip: 200  # per minute
+  allowed_origins:
+    - "*"
+
+log:
+  level: "info"  # debug, info, warn, error
+  format: "json"
+  output: "stdout"  # stdout, file
+  file_path: "./logs/datacollector.log"
+  max_size: 100  # MB
+  max_age: 30  # days
