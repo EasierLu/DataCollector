@@ -99,9 +99,17 @@ func (s *SQLiteStore) Init(ctx context.Context) error {
 func splitSQL(sql string) []string {
 	var result []string
 	for _, s := range strings.Split(sql, ";") {
-		s = strings.TrimSpace(s)
-		if s != "" && !strings.HasPrefix(s, "--") {
-			result = append(result, s)
+		// 移除注释行，保留实际 SQL
+		var lines []string
+		for _, line := range strings.Split(s, "\n") {
+			trimmed := strings.TrimSpace(line)
+			if trimmed != "" && !strings.HasPrefix(trimmed, "--") {
+				lines = append(lines, line)
+			}
+		}
+		stmt := strings.TrimSpace(strings.Join(lines, "\n"))
+		if stmt != "" {
+			result = append(result, stmt)
 		}
 	}
 	return result

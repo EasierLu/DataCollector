@@ -42,7 +42,7 @@ func (h *CollectorHandler) CollectData(c *gin.Context) {
 
 	// 3. 通过 store.GetTokenByHash 查找 token 记录
 	tokenRecord, err := h.store.GetTokenByHash(ctx, tokenHash)
-	if err != nil {
+	if err != nil || tokenRecord == nil {
 		model.SendError(c, http.StatusUnauthorized, model.CodeInvalidToken, "")
 		return
 	}
@@ -157,7 +157,7 @@ func (h *CollectorHandler) CollectBatchData(c *gin.Context) {
 
 	// 3. 通过 store.GetTokenByHash 查找 token 记录
 	tokenRecord, err := h.store.GetTokenByHash(ctx, tokenHash)
-	if err != nil {
+	if err != nil || tokenRecord == nil {
 		model.SendError(c, http.StatusUnauthorized, model.CodeInvalidToken, "")
 		return
 	}
