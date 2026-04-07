@@ -107,6 +107,30 @@ func splitSQL(sql string) []string {
 	return result
 }
 
+// ResetAllData 清除所有业务数据（用于重新初始化）
+func (s *SQLiteStore) ResetAllData(ctx context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// 按外键依赖顺序删除，子表先删
+	tables := []string{
+		"data_records",
+		"statistics",
+		"data_tokens",
+		"data_sources",
+		"users",
+		"system_configs",
+	}
+
+	for _, table := range tables {
+		if _, err := s.db.ExecContext(ctx, "DELETE FROM "+table); err != nil {
+			return fmt.Errorf("failed to clear table %s: %w", table, err)
+		}
+	}
+
+	return nil
+}
+
 // Close 关闭数据库连接
 func (s *SQLiteStore) Close() error {
 	return s.db.Close()

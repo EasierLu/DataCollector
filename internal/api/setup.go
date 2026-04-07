@@ -231,13 +231,10 @@ func (h *SetupHandler) Reinitialize(c *gin.Context) {
 		return
 	}
 
-	// 执行重新初始化
-	// 注意：这里需要调用存储层的清理方法，但由于接口限制，
-	// 实际实现可能需要扩展 DataStore 接口或使用特定实现的方法
-	// 目前先设置 initialized=false，实际数据清理由调用者处理
+	// 执行重新初始化：清除所有数据
 	ctx := c.Request.Context()
-	if err := h.store.SetConfig(ctx, "initialized", "false"); err != nil {
-		model.SendError(c, http.StatusInternalServerError, model.CodeInitFailed, "failed to reset initialization: "+err.Error())
+	if err := h.store.ResetAllData(ctx); err != nil {
+		model.SendError(c, http.StatusInternalServerError, model.CodeInitFailed, "failed to clear data: "+err.Error())
 		return
 	}
 

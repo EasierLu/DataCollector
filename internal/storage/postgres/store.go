@@ -57,6 +57,16 @@ func (s *PostgresStore) Init(ctx context.Context) error {
 	return nil
 }
 
+// ResetAllData 清除所有业务数据（用于重新初始化）
+func (s *PostgresStore) ResetAllData(ctx context.Context) error {
+	// 使用 TRUNCATE CASCADE 一次性清空所有表
+	_, err := s.db.ExecContext(ctx, `TRUNCATE TABLE data_records, statistics, data_tokens, data_sources, users, system_configs RESTART IDENTITY CASCADE`)
+	if err != nil {
+		return fmt.Errorf("failed to truncate tables: %w", err)
+	}
+	return nil
+}
+
 // Close 关闭数据库连接
 func (s *PostgresStore) Close() error {
 	return s.db.Close()
