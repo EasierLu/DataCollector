@@ -10,6 +10,7 @@ import (
 
 // JWTAuthMiddleware JWT 认证中间件
 // 从 Authorization: Bearer <token> 头获取 token 并验证
+// 如果请求头没有 token，则尝试从 URL 查询参数 token 获取（支持 WebSocket 连接）
 // 验证成功后将 Claims 信息存入 gin.Context：
 //   c.Set("user_id", claims.UserID)
 //   c.Set("username", claims.Username)
@@ -17,23 +18,28 @@ import (
 // 验证失败返回 401
 func JWTAuthMiddleware(jwtManager *JWTManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// 从请求头获取 Authorization
+		var tokenString string
+
+		// 优先从请求头获取 Authorization
 		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" {
-			model.SendError(c, http.StatusUnauthorized, model.CodeInvalidJWT, "缺少 Authorization 请求头")
+		if authHeader != "" {
+			// 解析 Bearer token
+			parts := strings.SplitN(authHeader, " ", 2)
+			if len(parts) == 2 && strings.ToLower(parts[0]) == "bearer" {
+				tokenString = parts[1]
+			}
+		}
+
+		// 如果请求头没有 token，尝试从 URL 查询参数获取（支持 WebSocket）
+		if tokenString == "" {
+			tokenString = c.Query("token")
+		}
+
+		if tokenString == "" {
+			model.SendError(c, http.StatusUnauthorized, model.CodeInvalidJWT, "缺少认证信息")
 			c.Abort()
 			return
 		}
-
-		// 解析 Bearer token
-		parts := strings.SplitN(authHeader, " ", 2)
-		if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
-			model.SendError(c, http.StatusUnauthorized, model.CodeInvalidJWT, "Authorization 格式错误，应为 Bearer <token>")
-			c.Abort()
-			return
-		}
-
-		tokenString := parts[1]
 
 		// 验证 token
 		claims, err := jwtManager.ValidateToken(tokenString)

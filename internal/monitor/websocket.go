@@ -105,22 +105,17 @@ func (h *WebSocketHub) Run() {
 	}
 }
 
-// BroadcastStats 广播统计更新消息
-func (h *WebSocketHub) BroadcastStats(sourceID int64, todayCount int64) {
-	data := StatsUpdateData{
-		SourceID:   sourceID,
-		TodayCount: todayCount,
-		Timestamp:  time.Now().UTC(),
-	}
-
+// BroadcastStatsUpdate 广播统计数据更新通知
+// 通知所有连接的客户端重新获取统计数据
+func (h *WebSocketHub) BroadcastStatsUpdate() {
 	msg := WSMessage{
 		Type: "stats_update",
-		Data: data,
+		Data: map[string]string{"action": "refresh"},
 	}
 
 	jsonData, err := json.Marshal(msg)
 	if err != nil {
-		h.logger.Error("failed to marshal stats message", "error", err)
+		h.logger.Error("failed to marshal stats update message", "error", err)
 		return
 	}
 

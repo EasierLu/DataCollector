@@ -77,13 +77,8 @@ func (a *Aggregator) run(ctx context.Context) {
 func (a *Aggregator) handleEvent(ctx context.Context, event StatEvent) {
 	a.mu.Lock()
 	a.counters[event.SourceID]++
-	count := a.counters[event.SourceID]
 	a.mu.Unlock()
-
-	// 通知 WebSocket Hub 推送实时更新
-	if a.hub != nil {
-		a.hub.BroadcastStats(event.SourceID, count)
-	}
+	// 不在此处推送 WebSocket 消息，等待 flush 完成后再统一推送
 }
 
 // Stop 停止聚合器并执行最后一次持久化
@@ -130,6 +125,11 @@ func (a *Aggregator) flush(ctx context.Context) {
 	}
 
 	a.logger.Debug("flushed counters to database", "count", len(countersToFlush), "date", today)
+
+	// 数据已持久化到数据库，通知 WebSocket Hub 推送更新
+	if a.hub != nil {
+		a.hub.BroadcastStatsUpdate()
+	}
 }
 
 // GetTodayCount 获取今天某个数据源的统计计数（内存中的计数）

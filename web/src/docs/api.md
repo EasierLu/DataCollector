@@ -388,9 +388,7 @@ Content-Type: application/json
 {
   "code": 0,
   "message": "成功",
-  "data": {
-    "record_id": 12345
-  }
+  "data": {}
 }
 ```
 
@@ -431,8 +429,7 @@ Content-Type: application/json
   "data": {
     "total": 2,
     "succeeded": 2,
-    "failed": 0,
-    "record_ids": [12345, 12346]
+    "failed": 0
   }
 }
 ```

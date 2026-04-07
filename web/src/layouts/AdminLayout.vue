@@ -18,6 +18,26 @@
           <span v-show="appStore.sidebarOpen" class="nav-label">{{ item.label }}</span>
         </router-link>
       </nav>
+      <!-- WebSocket 状态 -->
+      <div class="sidebar-footer">
+        <div class="ws-status" :class="{ collapsed: !appStore.sidebarOpen }">
+          <div class="ws-status-main">
+            <span class="ws-dot" :class="wsStore.connected ? 'connected' : 'disconnected'" />
+            <span v-show="appStore.sidebarOpen" class="ws-text">
+              {{ wsStore.connected ? '已连接' : '未连接' }}
+            </span>
+          </div>
+          <el-button
+            v-show="appStore.sidebarOpen"
+            text
+            size="small"
+            type="primary"
+            @click="wsStore.reconnect()"
+          >
+            重连
+          </el-button>
+        </div>
+      </div>
     </aside>
 
     <!-- 主内容区 -->
@@ -41,17 +61,28 @@
 </template>
 
 <script setup lang="ts">
+import { onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { Monitor, Odometer, Connection, Document, Setting, Fold, Expand, SwitchButton, Notebook } from '@element-plus/icons-vue'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
+import { useWebSocketStore } from '@/stores/websocket'
 import { useTokenRefresh } from '@/composables/useAuth'
 
 const route = useRoute()
 const appStore = useAppStore()
 const authStore = useAuthStore()
+const wsStore = useWebSocketStore()
 
 useTokenRefresh()
+
+onMounted(() => {
+  wsStore.connect()
+})
+
+onUnmounted(() => {
+  wsStore.disconnect()
+})
 
 const menuItems = [
   { path: '/dashboard', label: '仪表盘', icon: Odometer },
@@ -78,6 +109,7 @@ const menuItems = [
   flex-shrink: 0;
   transition: width 0.3s;
   overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .sidebar.collapsed {
@@ -134,6 +166,55 @@ const menuItems = [
 
 .nav-label {
   font-size: 14px;
+}
+
+.sidebar-footer {
+  margin-top: auto;
+  padding: 12px 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.ws-status {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 4px;
+}
+
+.ws-status.collapsed {
+  justify-content: center;
+}
+
+.ws-status-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ws-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.ws-dot.connected {
+  background: #22c55e;
+  animation: pulse 2s infinite;
+}
+
+.ws-dot.disconnected {
+  background: #ef4444;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.ws-text {
+  font-size: 13px;
+  color: #c7d2fe;
 }
 
 .main-area {

@@ -127,16 +127,14 @@ func (h *CollectorHandler) CollectData(c *gin.Context) {
 	}
 
 	// 12. 调用 processor.ProcessRecord 持久化
-	recordID, err := h.processor.ProcessRecord(ctx, record)
+	_, err = h.processor.ProcessRecord(ctx, record)
 	if err != nil {
 		model.SendError(c, http.StatusInternalServerError, model.CodeInternalError, "failed to save record")
 		return
 	}
 
-	// 13. 返回成功，data 包含 record_id
-	model.SendSuccess(c, gin.H{
-		"record_id": recordID,
-	})
+	// 13. 返回成功
+	model.SendSuccess(c, gin.H{})
 }
 
 // CollectBatchData 处理批量数据提交
@@ -255,26 +253,17 @@ func (h *CollectorHandler) CollectBatchData(c *gin.Context) {
 	}
 
 	// 9. 批量处理记录
-	succeeded, failed, recordIDs, err := h.processor.ProcessBatch(ctx, records)
+	succeeded, failed, _, err := h.processor.ProcessBatch(ctx, records)
 	if err != nil && succeeded == 0 {
 		model.SendError(c, http.StatusInternalServerError, model.CodeInternalError, "failed to process batch")
 		return
 	}
 
-	// 过滤出有效的 record IDs（排除 0 值）
-	validRecordIDs := make([]int64, 0, len(recordIDs))
-	for _, id := range recordIDs {
-		if id > 0 {
-			validRecordIDs = append(validRecordIDs, id)
-		}
-	}
-
 	// 返回结果
 	model.SendSuccess(c, gin.H{
-		"total":      len(batchRequest.Records),
-		"succeeded":  succeeded,
-		"failed":     failed,
-		"record_ids": validRecordIDs,
+		"total":     len(batchRequest.Records),
+		"succeeded": succeeded,
+		"failed":    failed,
 	})
 }
 

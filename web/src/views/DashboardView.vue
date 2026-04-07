@@ -16,19 +16,6 @@
       </el-col>
     </el-row>
 
-    <!-- WebSocket 状态 -->
-    <el-card shadow="hover" style="margin-bottom: 20px">
-      <div class="ws-status-bar">
-        <div class="ws-status-left">
-          <span class="ws-dot" :class="wsConnected ? 'connected' : 'disconnected'" />
-          <span>实时连接状态: {{ wsConnected ? '已连接' : '未连接' }}</span>
-        </div>
-        <el-button text type="primary" @click="reconnect">
-          <el-icon class="el-icon--left"><Refresh /></el-icon>重连
-        </el-button>
-      </div>
-    </el-card>
-
     <!-- 数据趋势图表 -->
     <el-card shadow="hover" style="margin-bottom: 20px" v-loading="trendLoading">
       <template #header>
@@ -121,7 +108,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import { Calendar, TrendCharts, DataBoard, Connection, Refresh } from '@element-plus/icons-vue'
+import { Calendar, TrendCharts, DataBoard, Connection } from '@element-plus/icons-vue'
 import { use } from 'echarts/core'
 import { LineChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent } from 'echarts/components'
@@ -130,7 +117,7 @@ import VChart from 'vue-echarts'
 import { getDashboard, getDashboardTrend } from '@/api/dashboard'
 import { listSources } from '@/api/source'
 import { listTokens } from '@/api/token'
-import { useWebSocket } from '@/composables/useWebSocket'
+import { useWebSocketStore } from '@/stores/websocket'
 import { formatDate, getDataSummary } from '@/utils/format'
 import type { DataRecord } from '@/types/record'
 import type { DataSource } from '@/types/source'
@@ -147,30 +134,35 @@ const totalSources = ref(0)
 const recentRecords = ref<DataRecord[]>([])
 
 const statCards = computed(() => [
-  { label: '今日数据量', value: todayCount.value, icon: Calendar, color: '#2563eb', footer: '实时更新' },
-  { label: '本周数据量', value: weekCount.value, icon: TrendCharts, color: '#4f46e5', footer: '本周累计' },
-  { label: '本月数据量', value: monthCount.value, icon: DataBoard, color: '#7c3aed', footer: '本月累计' },
+  { label: '今日数据量', value: todayCount.value, icon: Calendar, color: '#2563eb', footer: '' },
+  { label: '本周数据量', value: weekCount.value, icon: TrendCharts, color: '#4f46e5', footer: '' },
+  { label: '本月数据量', value: monthCount.value, icon: DataBoard, color: '#7c3aed', footer: '' },
   { label: '数据源总数', value: totalSources.value, icon: Connection, color: '#059669', footer: '' },
 ])
 
 // WebSocket
-const { connected: wsConnected, connect, disconnect, onMessage } = useWebSocket(() => {
-  const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
-  const token = localStorage.getItem('jwt_token')
-  return `${protocol}//${location.host}/api/v1/admin/ws/monitor?token=${token}`
-})
+const wsStore = useWebSocketStore()
+let unsubscribe: (() => void) | null = null
 
-onMessage((message: any) => {
+unsubscribe = wsStore.onMessage((message: any) => {
   if (message.type === 'stats_update') {
-    if (message.data.today_count !== undefined) todayCount.value = message.data.today_count
-    if (message.data.week_count !== undefined) weekCount.value = message.data.week_count
-    if (message.data.month_count !== undefined) monthCount.value = message.data.month_count
+    // 收到统计数据更新通知，重新获取全量统计数据
+    refreshStats()
   }
 })
 
-function reconnect() {
-  disconnect()
-  connect()
+// 刷新统计数据
+async function refreshStats() {
+  try {
+    const data = await getDashboard()
+    todayCount.value = data.today_count || 0
+    weekCount.value = data.week_count || 0
+    monthCount.value = data.month_count || 0
+    totalSources.value = data.total_sources || 0
+    recentRecords.value = data.recent_records || []
+  } catch {
+    // handled by interceptor
+  }
 }
 
 // 趋势图表
@@ -343,13 +335,15 @@ onMounted(async () => {
   } finally {
     loading.value = false
   }
-  connect()
   loadSourceOptions()
   loadTrend()
 })
 
 onUnmounted(() => {
-  disconnect()
+  if (unsubscribe) {
+    unsubscribe()
+    unsubscribe = null
+  }
 })
 </script>
 
@@ -380,41 +374,6 @@ onUnmounted(() => {
   font-size: 12px;
   color: #9ca3af;
   margin-top: 12px;
-}
-
-.ws-status-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.ws-status-left {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 14px;
-  color: #4b5563;
-}
-
-.ws-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  display: inline-block;
-}
-
-.ws-dot.connected {
-  background: #22c55e;
-  animation: pulse 2s infinite;
-}
-
-.ws-dot.disconnected {
-  background: #ef4444;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
 }
 
 .card-header {
