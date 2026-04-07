@@ -88,7 +88,7 @@
         <el-table-column prop="id" label="ID" width="80" />
         <el-table-column prop="source_id" label="数据源" width="120">
           <template #default="{ row }">
-            <el-tag size="small">ID: {{ row.source_id }}</el-tag>
+            <el-tag size="small">{{ getSourceName(row.source_id) }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="数据摘要" min-width="200">
@@ -174,6 +174,11 @@ const trendSourceId = ref<number | undefined>(undefined)
 const trendTokenId = ref<number | undefined>(undefined)
 const sourceOptions = ref<DataSource[]>([])
 const tokenOptions = ref<DataToken[]>([])
+
+function getSourceName(sourceId: number): string {
+  const source = sourceOptions.value.find(s => s.id === sourceId)
+  return source ? source.name : `#${sourceId}`
+}
 
 function getDateRange(): { start_date: string; end_date: string } | null {
   const today = new Date()
@@ -324,6 +329,7 @@ watch(trendTokenId, () => {
 
 onMounted(async () => {
   try {
+    await loadSourceOptions()
     const data = await getDashboard()
     todayCount.value = data.today_count || 0
     weekCount.value = data.week_count || 0
@@ -335,7 +341,6 @@ onMounted(async () => {
   } finally {
     loading.value = false
   }
-  loadSourceOptions()
   loadTrend()
 })
 

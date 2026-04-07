@@ -67,6 +67,9 @@ func RegisterRoutes(
 				// Token 刷新
 				adminAuth.POST("/refresh-token", authHandler.RefreshToken)
 
+				// 修改密码
+				adminAuth.POST("/change-password", authHandler.ChangePassword)
+
 				// 仪表盘
 				adminAuth.GET("/dashboard", dashboardHandler.GetDashboard)
 				adminAuth.GET("/dashboard/trend", dashboardHandler.GetDashboardTrend)

@@ -17,3 +17,12 @@ export function login(data: LoginRequest): Promise<LoginResponse> {
 export function refreshToken(): Promise<LoginResponse> {
   return request.post('/api/v1/admin/refresh-token')
 }
+
+export interface ChangePasswordRequest {
+  old_password: string
+  new_password: string
+}
+
+export function changePassword(data: ChangePasswordRequest): Promise<void> {
+  return request.post('/api/v1/admin/change-password', data)
+}

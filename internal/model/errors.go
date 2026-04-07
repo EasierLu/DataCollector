@@ -11,10 +11,12 @@ const (
 	CodeRateLimitExceeded = 1003
 
 	// 用户认证 2000-2099
-	CodeLoginFailed      = 2000
-	CodeTokenExpired     = 2001
-	CodePermissionDenied = 2002
-	CodeInvalidJWT       = 2003
+	CodeLoginFailed        = 2000
+	CodeTokenExpired       = 2001
+	CodePermissionDenied   = 2002
+	CodeInvalidJWT         = 2003
+	CodeOldPasswordWrong   = 2004
+	CodePasswordChangeFail = 2005
 
 	// 数据源管理 3000-3099
 	CodeSourceNotFound     = 3000
@@ -48,10 +50,12 @@ var ErrorMessages = map[int]string{
 	CodeRateLimitExceeded: "请求频率超限",
 
 	// 用户认证
-	CodeLoginFailed:      "登录失败",
-	CodeTokenExpired:     "Token已过期",
-	CodePermissionDenied: "权限不足",
-	CodeInvalidJWT:       "无效的JWT",
+	CodeLoginFailed:        "登录失败",
+	CodeTokenExpired:       "Token已过期",
+	CodePermissionDenied:   "权限不足",
+	CodeInvalidJWT:         "无效的JWT",
+	CodeOldPasswordWrong:   "旧密码错误",
+	CodePasswordChangeFail: "修改密码失败",
 
 	// 数据源管理
 	CodeSourceNotFound:     "数据源不存在",
