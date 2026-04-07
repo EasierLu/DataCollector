@@ -66,3 +66,4 @@ ehthumbs.db
 # Qoder
 # =========================
 .qoder/full_diff.patch
+.qoder/
