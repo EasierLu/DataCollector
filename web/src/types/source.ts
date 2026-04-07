@@ -22,16 +22,22 @@ export interface DataSource {
   created_at: string
   updated_at: string
   token_count?: number
+  rate_limit: number
+  rate_limit_burst: number
 }
 
 export interface CreateSourceRequest {
   name: string
   description: string
   schema_config?: SchemaConfig
+  rate_limit?: number
+  rate_limit_burst?: number
 }
 
 export interface UpdateSourceRequest {
   name: string
   description: string
   schema_config?: SchemaConfig
+  rate_limit?: number
+  rate_limit_burst?: number
 }

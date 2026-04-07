@@ -54,6 +54,15 @@ func (s *PostgresStore) Init(ctx context.Context) error {
 		// 但如果列已存在 ALTER TABLE ADD COLUMN IF NOT EXISTS 不会报错
 	}
 
+	// 执行增量迁移 003：添加限流字段
+	sqlBytes3, err := migrations.FS.ReadFile("003_add_rate_limit_postgres.sql")
+	if err != nil {
+		return fmt.Errorf("failed to read migration file 003: %w", err)
+	}
+	if _, err := s.db.ExecContext(ctx, string(sqlBytes3)); err != nil {
+		// IF NOT EXISTS 保证幂等
+	}
+
 	return nil
 }
 

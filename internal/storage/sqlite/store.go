@@ -92,6 +92,27 @@ func (s *SQLiteStore) Init(ctx context.Context) error {
 		}
 	}
 
+	// 执行增量迁移 003：添加限流字段
+	var rlColCount int
+	err = s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM pragma_table_info('data_sources') WHERE name='rate_limit'").Scan(&rlColCount)
+	if err != nil {
+		return fmt.Errorf("failed to check rate_limit column: %w", err)
+	}
+	if rlColCount == 0 {
+		sqlBytes3, err := migrations.FS.ReadFile("003_add_rate_limit_sqlite.sql")
+		if err != nil {
+			return fmt.Errorf("failed to read migration file 003: %w", err)
+		}
+		statements3 := splitSQL(string(sqlBytes3))
+		for _, stmt := range statements3 {
+			if stmt != "" {
+				if _, err := s.db.ExecContext(ctx, stmt); err != nil {
+					return fmt.Errorf("failed to execute migration 003: %w", err)
+				}
+			}
+		}
+	}
+
 	return nil
 }
 

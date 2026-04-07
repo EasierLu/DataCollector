@@ -11,8 +11,8 @@ import (
 // CreateSource 创建数据源
 func (s *PostgresStore) CreateSource(ctx context.Context, source *model.DataSource) (int64, error) {
 	query := `
-		INSERT INTO data_sources (collect_id, name, description, schema_config, status, created_by, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		INSERT INTO data_sources (collect_id, name, description, schema_config, status, created_by, rate_limit, rate_limit_burst, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		RETURNING id
 	`
 	now := time.Now()
@@ -24,6 +24,8 @@ func (s *PostgresStore) CreateSource(ctx context.Context, source *model.DataSour
 		source.SchemaConfig,
 		source.Status,
 		source.CreatedBy,
+		source.RateLimit,
+		source.RateLimitBurst,
 		now,
 		now,
 	).Scan(&id)
@@ -37,7 +39,7 @@ func (s *PostgresStore) CreateSource(ctx context.Context, source *model.DataSour
 // GetSourceByID 根据 ID 获取数据源
 func (s *PostgresStore) GetSourceByID(ctx context.Context, id int64) (*model.DataSource, error) {
 	query := `
-		SELECT id, collect_id, name, description, schema_config, status, created_by, created_at, updated_at
+		SELECT id, collect_id, name, description, schema_config, status, created_by, created_at, updated_at, rate_limit, rate_limit_burst
 		FROM data_sources
 		WHERE id = $1 AND status = 1
 	`
@@ -54,6 +56,8 @@ func (s *PostgresStore) GetSourceByID(ctx context.Context, id int64) (*model.Dat
 		&source.CreatedBy,
 		&source.CreatedAt,
 		&source.UpdatedAt,
+		&source.RateLimit,
+		&source.RateLimitBurst,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -68,7 +72,7 @@ func (s *PostgresStore) GetSourceByID(ctx context.Context, id int64) (*model.Dat
 // GetSourceByCollectID 根据 CollectID 获取数据源
 func (s *PostgresStore) GetSourceByCollectID(ctx context.Context, collectID string) (*model.DataSource, error) {
 	query := `
-		SELECT id, collect_id, name, description, schema_config, status, created_by, created_at, updated_at
+		SELECT id, collect_id, name, description, schema_config, status, created_by, created_at, updated_at, rate_limit, rate_limit_burst
 		FROM data_sources
 		WHERE collect_id = $1 AND status = 1
 	`
@@ -85,6 +89,8 @@ func (s *PostgresStore) GetSourceByCollectID(ctx context.Context, collectID stri
 		&source.CreatedBy,
 		&source.CreatedAt,
 		&source.UpdatedAt,
+		&source.RateLimit,
+		&source.RateLimitBurst,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -116,7 +122,7 @@ func (s *PostgresStore) ListSources(ctx context.Context, page, size int) (*model
 	// 查询列表（包含 token_count）
 	query := `
 		SELECT s.id, s.collect_id, s.name, s.description, s.schema_config, s.status, s.created_by, 
-		       s.created_at, s.updated_at, COUNT(t.id) as token_count
+		       s.created_at, s.updated_at, s.rate_limit, s.rate_limit_burst, COUNT(t.id) as token_count
 		FROM data_sources s
 		LEFT JOIN data_tokens t ON s.id = t.source_id AND t.status = 1
 		WHERE s.status = 1
@@ -144,6 +150,8 @@ func (s *PostgresStore) ListSources(ctx context.Context, page, size int) (*model
 			&source.CreatedBy,
 			&source.CreatedAt,
 			&source.UpdatedAt,
+			&source.RateLimit,
+			&source.RateLimitBurst,
 			&source.TokenCount,
 		)
 		if err != nil {
@@ -166,14 +174,16 @@ func (s *PostgresStore) ListSources(ctx context.Context, page, size int) (*model
 func (s *PostgresStore) UpdateSource(ctx context.Context, source *model.DataSource) error {
 	query := `
 		UPDATE data_sources
-		SET name = $1, description = $2, schema_config = $3, status = $4, updated_at = $5
-		WHERE id = $6
+		SET name = $1, description = $2, schema_config = $3, status = $4, rate_limit = $5, rate_limit_burst = $6, updated_at = $7
+		WHERE id = $8
 	`
 	_, err := s.db.ExecContext(ctx, query,
 		source.Name,
 		source.Description,
 		source.SchemaConfig,
 		source.Status,
+		source.RateLimit,
+		source.RateLimitBurst,
 		time.Now(),
 		source.ID,
 	)

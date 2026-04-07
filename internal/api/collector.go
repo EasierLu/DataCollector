@@ -1,11 +1,13 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"time"
 
 	"github.com/datacollector/datacollector/internal/collector"
+	"github.com/datacollector/datacollector/internal/middleware"
 	"github.com/datacollector/datacollector/internal/model"
 	"github.com/datacollector/datacollector/internal/storage"
 	"github.com/gin-gonic/gin"
@@ -13,15 +15,17 @@ import (
 
 // CollectorHandler 数据采集 API Handler
 type CollectorHandler struct {
-	store     storage.DataStore
-	processor *collector.Processor
+	store       storage.DataStore
+	processor   *collector.Processor
+	rateLimiter *middleware.RateLimiter
 }
 
 // NewCollectorHandler 创建新的采集处理器
-func NewCollectorHandler(store storage.DataStore, processor *collector.Processor) *CollectorHandler {
+func NewCollectorHandler(store storage.DataStore, processor *collector.Processor, rateLimiter *middleware.RateLimiter) *CollectorHandler {
 	return &CollectorHandler{
-		store:     store,
-		processor: processor,
+		store:       store,
+		processor:   processor,
+		rateLimiter: rateLimiter,
 	}
 }
 
@@ -77,6 +81,18 @@ func (h *CollectorHandler) CollectData(c *gin.Context) {
 	if tokenRecord.SourceID != source.ID {
 		model.SendError(c, http.StatusUnauthorized, model.CodeInvalidToken, "")
 		return
+	}
+
+	// Token/Source 级别限流（令牌桶算法）
+	if h.rateLimiter != nil {
+		rps, burst := h.getSourceRateLimit(ctx, source)
+		if rps > 0 {
+			key := "token:" + token
+			if !h.rateLimiter.Allow(key, rps, burst) {
+				model.SendError(c, http.StatusTooManyRequests, model.CodeRateLimitExceeded, "请求频率超限，请稍后再试")
+				return
+			}
+		}
 	}
 
 	sourceID := source.ID
@@ -193,6 +209,18 @@ func (h *CollectorHandler) CollectBatchData(c *gin.Context) {
 		return
 	}
 
+	// Token/Source 级别限流（令牌桶算法）
+	if h.rateLimiter != nil {
+		rps, burst := h.getSourceRateLimit(ctx, source)
+		if rps > 0 {
+			key := "token:" + token
+			if !h.rateLimiter.Allow(key, rps, burst) {
+				model.SendError(c, http.StatusTooManyRequests, model.CodeRateLimitExceeded, "请求频率超限，请稍后再试")
+				return
+			}
+		}
+	}
+
 	// 5. 更新 token 的最后使用时间
 	if err := h.store.UpdateTokenLastUsed(ctx, tokenRecord.ID); err != nil {
 		// 记录日志但不中断流程
@@ -279,4 +307,26 @@ func (h *CollectorHandler) RegisterRoutes(r *gin.RouterGroup) {
 		collect.POST("/:collect_id", h.CollectData)
 		collect.POST("/:collect_id/batch", h.CollectBatchData)
 	}
+}
+
+// getSourceRateLimit 获取数据源的限流参数（每秒请求数和突发量）
+// 优先使用数据源级别配置，若未配置则回退全局默认值
+func (h *CollectorHandler) getSourceRateLimit(ctx context.Context, source *model.DataSource) (rps float64, burst int) {
+	limitPerMin := source.RateLimit
+	burst = source.RateLimitBurst
+
+	// 回退全局默认值
+	if limitPerMin <= 0 || burst <= 0 {
+		globalSettings := LoadRateLimitSettings(ctx, h.store)
+		if limitPerMin <= 0 {
+			limitPerMin = globalSettings.RateLimitPerToken
+		}
+		if burst <= 0 {
+			burst = globalSettings.RateLimitPerTokenBurst
+		}
+	}
+
+	// 将每分钟请求数转换为每秒请求数
+	rps = float64(limitPerMin) / 60.0
+	return
 }

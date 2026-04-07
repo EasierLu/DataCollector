@@ -1,6 +1,8 @@
 package api
 
 import (
+	"context"
+
 	"github.com/datacollector/datacollector/internal/auth"
 	"github.com/datacollector/datacollector/internal/collector"
 	"github.com/datacollector/datacollector/internal/config"
@@ -28,7 +30,8 @@ func RegisterRoutes(
 	exportHandler := NewExportHandler(store)
 	healthHandler := NewHealthHandler(store, "1.0.0")
 	setupHandler := NewSetupHandler(store, cfg, jwtManager)
-	collectorHandler := NewCollectorHandler(store, processor)
+	collectorHandler := NewCollectorHandler(store, processor, rateLimiter)
+	settingsHandler := NewSettingsHandler(store)
 
 	// API v1 路由组
 	apiV1 := r.Group("/api/v1")
@@ -45,10 +48,13 @@ func RegisterRoutes(
 		}
 
 		// 数据采集路由 - 使用 Data Token 认证（由 collector 中间件处理）
-		// 应用 IP 限流和 Token 限流中间件
+		// 应用 IP 限流中间件（动态读取数据库配置），Token/Source 限流在 handler 内部处理
 		collect := apiV1.Group("/collect")
-		collect.Use(rateLimiter.IPRateLimitMiddleware(cfg.Collector.RateLimitPerIP))
-		collect.Use(rateLimiter.TokenRateLimitMiddleware(cfg.Collector.RateLimitPerToken))
+		collect.Use(rateLimiter.IPRateLimitMiddleware(func(ctx context.Context) (float64, int) {
+			settings := LoadRateLimitSettings(ctx, store)
+			// 将每分钟请求数转换为每秒请求数
+			return float64(settings.RateLimitPerIP) / 60.0, settings.RateLimitPerIPBurst
+		}))
 		{
 			collect.POST("/:collect_id", collectorHandler.CollectData)
 			collect.POST("/:collect_id/batch", collectorHandler.CollectBatchData)
@@ -100,6 +106,13 @@ func RegisterRoutes(
 					data.GET("", dataHandler.QueryData)
 					data.DELETE("/:id", dataHandler.DeleteRecord)
 					data.POST("/batch-delete", dataHandler.BatchDeleteRecords)
+				}
+
+				// 限流配置
+				settings := adminAuth.Group("/settings")
+				{
+					settings.GET("/rate-limit", settingsHandler.GetRateLimitSettings)
+					settings.PUT("/rate-limit", settingsHandler.UpdateRateLimitSettings)
 				}
 
 				// 数据导出

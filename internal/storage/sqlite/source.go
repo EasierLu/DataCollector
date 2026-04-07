@@ -14,8 +14,8 @@ func (s *SQLiteStore) CreateSource(ctx context.Context, source *model.DataSource
 	defer s.mu.Unlock()
 
 	query := `
-		INSERT INTO data_sources (collect_id, name, description, schema_config, status, created_by, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO data_sources (collect_id, name, description, schema_config, status, created_by, rate_limit, rate_limit_burst, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	now := time.Now()
 	result, err := s.db.ExecContext(ctx, query,
@@ -25,6 +25,8 @@ func (s *SQLiteStore) CreateSource(ctx context.Context, source *model.DataSource
 		source.SchemaConfig,
 		source.Status,
 		source.CreatedBy,
+		source.RateLimit,
+		source.RateLimitBurst,
 		now,
 		now,
 	)
@@ -38,7 +40,7 @@ func (s *SQLiteStore) CreateSource(ctx context.Context, source *model.DataSource
 // GetSourceByID 根据 ID 获取数据源
 func (s *SQLiteStore) GetSourceByID(ctx context.Context, id int64) (*model.DataSource, error) {
 	query := `
-		SELECT id, collect_id, name, description, schema_config, status, created_by, created_at, updated_at
+		SELECT id, collect_id, name, description, schema_config, status, created_by, created_at, updated_at, rate_limit, rate_limit_burst
 		FROM data_sources
 		WHERE id = ? AND status = 1
 	`
@@ -55,6 +57,8 @@ func (s *SQLiteStore) GetSourceByID(ctx context.Context, id int64) (*model.DataS
 		&source.CreatedBy,
 		&source.CreatedAt,
 		&source.UpdatedAt,
+		&source.RateLimit,
+		&source.RateLimitBurst,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -69,7 +73,7 @@ func (s *SQLiteStore) GetSourceByID(ctx context.Context, id int64) (*model.DataS
 // GetSourceByCollectID 根据 CollectID 获取数据源
 func (s *SQLiteStore) GetSourceByCollectID(ctx context.Context, collectID string) (*model.DataSource, error) {
 	query := `
-		SELECT id, collect_id, name, description, schema_config, status, created_by, created_at, updated_at
+		SELECT id, collect_id, name, description, schema_config, status, created_by, created_at, updated_at, rate_limit, rate_limit_burst
 		FROM data_sources
 		WHERE collect_id = ? AND status = 1
 	`
@@ -86,6 +90,8 @@ func (s *SQLiteStore) GetSourceByCollectID(ctx context.Context, collectID string
 		&source.CreatedBy,
 		&source.CreatedAt,
 		&source.UpdatedAt,
+		&source.RateLimit,
+		&source.RateLimitBurst,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -117,7 +123,7 @@ func (s *SQLiteStore) ListSources(ctx context.Context, page, size int) (*model.P
 	// 查询列表（包含 token_count）
 	query := `
 		SELECT s.id, s.collect_id, s.name, s.description, s.schema_config, s.status, s.created_by, 
-		       s.created_at, s.updated_at, COUNT(t.id) as token_count
+		       s.created_at, s.updated_at, s.rate_limit, s.rate_limit_burst, COUNT(t.id) as token_count
 		FROM data_sources s
 		LEFT JOIN data_tokens t ON s.id = t.source_id AND t.status = 1
 		WHERE s.status = 1
@@ -145,6 +151,8 @@ func (s *SQLiteStore) ListSources(ctx context.Context, page, size int) (*model.P
 			&source.CreatedBy,
 			&source.CreatedAt,
 			&source.UpdatedAt,
+			&source.RateLimit,
+			&source.RateLimitBurst,
 			&source.TokenCount,
 		)
 		if err != nil {
@@ -170,7 +178,7 @@ func (s *SQLiteStore) UpdateSource(ctx context.Context, source *model.DataSource
 
 	query := `
 		UPDATE data_sources
-		SET name = ?, description = ?, schema_config = ?, status = ?, updated_at = ?
+		SET name = ?, description = ?, schema_config = ?, status = ?, rate_limit = ?, rate_limit_burst = ?, updated_at = ?
 		WHERE id = ?
 	`
 	_, err := s.db.ExecContext(ctx, query,
@@ -178,6 +186,8 @@ func (s *SQLiteStore) UpdateSource(ctx context.Context, source *model.DataSource
 		source.Description,
 		source.SchemaConfig,
 		source.Status,
+		source.RateLimit,
+		source.RateLimitBurst,
 		time.Now(),
 		source.ID,
 	)

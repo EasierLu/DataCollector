@@ -45,6 +45,29 @@
         <p class="config-tip">数据库配置为只读展示，如需修改请直接编辑配置文件</p>
       </el-card>
 
+      <!-- 限流配置 -->
+      <el-card shadow="hover" style="margin-bottom: 20px">
+        <template #header><span class="card-title">限流配置</span></template>
+        <el-form :model="rateLimitForm" label-width="180px" style="max-width: 520px" v-loading="loadingRateLimit">
+          <el-form-item label="每IP每分钟请求数">
+            <el-input-number v-model="rateLimitForm.rate_limit_per_ip" :min="1" :max="100000" style="width: 100%" />
+          </el-form-item>
+          <el-form-item label="每IP突发量">
+            <el-input-number v-model="rateLimitForm.rate_limit_per_ip_burst" :min="1" :max="10000" style="width: 100%" />
+          </el-form-item>
+          <el-form-item label="每Token每分钟请求数">
+            <el-input-number v-model="rateLimitForm.rate_limit_per_token" :min="1" :max="100000" style="width: 100%" />
+          </el-form-item>
+          <el-form-item label="每Token突发量">
+            <el-input-number v-model="rateLimitForm.rate_limit_per_token_burst" :min="1" :max="10000" style="width: 100%" />
+          </el-form-item>
+          <el-form-item>
+            <el-button type="primary" :loading="savingRateLimit" @click="handleSaveRateLimit">保存配置</el-button>
+          </el-form-item>
+        </el-form>
+        <p class="config-tip">限流配置保存后立即生效，无需重启服务。数据源可单独配置限流参数覆盖全局默认值。</p>
+      </el-card>
+
       <!-- 修改密码 -->
       <el-card shadow="hover" style="margin-bottom: 20px">
         <template #header><span class="card-title">修改密码</span></template>
@@ -114,6 +137,8 @@ import { ref, reactive, onMounted } from 'vue'
 import { healthCheck } from '@/api/health'
 import { reinitialize } from '@/api/setup'
 import { changePassword } from '@/api/auth'
+import { getRateLimitSettings, updateRateLimitSettings } from '@/api/settings'
+import type { RateLimitSettings } from '@/api/settings'
 import { useAuthStore } from '@/stores/auth'
 import type { HealthResponse } from '@/api/health'
 import type { FormInstance, FormRules } from 'element-plus'
@@ -123,6 +148,16 @@ const authStore = useAuthStore()
 
 const loading = ref(true)
 const systemInfo = ref<HealthResponse>({ status: '', version: '', uptime: '', database: '' })
+
+// 限流配置
+const loadingRateLimit = ref(false)
+const savingRateLimit = ref(false)
+const rateLimitForm = reactive<RateLimitSettings>({
+  rate_limit_per_ip: 200,
+  rate_limit_per_ip_burst: 50,
+  rate_limit_per_token: 100,
+  rate_limit_per_token_burst: 20,
+})
 
 // 重新初始化
 const reinitVisible = ref(false)
@@ -188,6 +223,33 @@ async function loadHealth() {
   }
 }
 
+async function loadRateLimitSettings() {
+  loadingRateLimit.value = true
+  try {
+    const settings = await getRateLimitSettings()
+    rateLimitForm.rate_limit_per_ip = settings.rate_limit_per_ip
+    rateLimitForm.rate_limit_per_ip_burst = settings.rate_limit_per_ip_burst
+    rateLimitForm.rate_limit_per_token = settings.rate_limit_per_token
+    rateLimitForm.rate_limit_per_token_burst = settings.rate_limit_per_token_burst
+  } catch {
+    // handled
+  } finally {
+    loadingRateLimit.value = false
+  }
+}
+
+async function handleSaveRateLimit() {
+  savingRateLimit.value = true
+  try {
+    await updateRateLimitSettings({ ...rateLimitForm })
+    ElMessage.success('限流配置已保存')
+  } catch (err: any) {
+    ElMessage.error(err.message || '保存失败')
+  } finally {
+    savingRateLimit.value = false
+  }
+}
+
 function openReinitDialog() {
   reinitConfirmText.value = ''
   reinitError.value = ''
@@ -213,7 +275,10 @@ function handleLogout() {
   authStore.logout()
 }
 
-onMounted(loadHealth)
+onMounted(() => {
+  loadHealth()
+  loadRateLimitSettings()
+})
 </script>
 
 <style scoped>

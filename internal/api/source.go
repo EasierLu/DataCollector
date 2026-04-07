@@ -24,16 +24,20 @@ func NewSourceHandler(store storage.DataStore) *SourceHandler {
 
 // CreateSourceRequest 创建数据源请求
 type CreateSourceRequest struct {
-	Name         string          `json:"name" binding:"required"`
-	Description  string          `json:"description"`
-	SchemaConfig json.RawMessage `json:"schema_config"`
+	Name           string          `json:"name" binding:"required"`
+	Description    string          `json:"description"`
+	SchemaConfig   json.RawMessage `json:"schema_config"`
+	RateLimit      int             `json:"rate_limit"`
+	RateLimitBurst int             `json:"rate_limit_burst"`
 }
 
 // UpdateSourceRequest 更新数据源请求
 type UpdateSourceRequest struct {
-	Name         string          `json:"name" binding:"required"`
-	Description  string          `json:"description"`
-	SchemaConfig json.RawMessage `json:"schema_config"`
+	Name           string          `json:"name" binding:"required"`
+	Description    string          `json:"description"`
+	SchemaConfig   json.RawMessage `json:"schema_config"`
+	RateLimit      int             `json:"rate_limit"`
+	RateLimitBurst int             `json:"rate_limit_burst"`
 }
 
 // ListSources 获取数据源列表
@@ -83,12 +87,14 @@ func (h *SourceHandler) CreateSource(c *gin.Context) {
 	}
 
 	source := &model.DataSource{
-		CollectID:    model.GenerateCollectID(),
-		Name:         req.Name,
-		Description:  req.Description,
-		SchemaConfig: schemaConfig,
-		Status:       1,
-		CreatedBy:    userID.(int64),
+		CollectID:      model.GenerateCollectID(),
+		Name:           req.Name,
+		Description:    req.Description,
+		SchemaConfig:   schemaConfig,
+		Status:         1,
+		CreatedBy:      userID.(int64),
+		RateLimit:      req.RateLimit,
+		RateLimitBurst: req.RateLimitBurst,
 	}
 
 	id, err := h.store.CreateSource(c.Request.Context(), source)
@@ -135,6 +141,8 @@ func (h *SourceHandler) UpdateSource(c *gin.Context) {
 	existing.Name = req.Name
 	existing.Description = req.Description
 	existing.SchemaConfig = schemaConfig
+	existing.RateLimit = req.RateLimit
+	existing.RateLimitBurst = req.RateLimitBurst
 
 	if err := h.store.UpdateSource(c.Request.Context(), existing); err != nil {
 		model.SendError(c, http.StatusInternalServerError, model.CodeSourceUpdateFailed, err.Error())

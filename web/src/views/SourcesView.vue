@@ -87,6 +87,19 @@
             <div v-if="form.schema_fields.length === 0" class="empty-tip">暂无字段配置</div>
           </div>
         </el-form-item>
+        <el-form-item label="限流配置（可选）">
+          <div style="width: 100%; display: flex; gap: 12px">
+            <div style="flex: 1">
+              <div style="font-size: 12px; color: #6b7280; margin-bottom: 4px">每分钟请求数</div>
+              <el-input-number v-model="form.rate_limit" :min="0" :max="100000" placeholder="0" style="width: 100%" />
+            </div>
+            <div style="flex: 1">
+              <div style="font-size: 12px; color: #6b7280; margin-bottom: 4px">突发量</div>
+              <el-input-number v-model="form.rate_limit_burst" :min="0" :max="10000" placeholder="0" style="width: 100%" />
+            </div>
+          </div>
+          <div class="empty-tip">设为 0 表示使用系统设置中的全局默认值</div>
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
@@ -114,10 +127,12 @@ const dialogVisible = ref(false)
 const isEditing = ref(false)
 const editingId = ref<number | null>(null)
 const saving = ref(false)
-const form = ref<{ name: string; description: string; schema_fields: SchemaField[] }>({
+const form = ref<{ name: string; description: string; schema_fields: SchemaField[]; rate_limit: number; rate_limit_burst: number }>({
   name: '',
   description: '',
   schema_fields: [],
+  rate_limit: 0,
+  rate_limit_burst: 0,
 })
 
 async function loadSources() {
@@ -136,7 +151,7 @@ async function loadSources() {
 function openCreateDialog() {
   isEditing.value = false
   editingId.value = null
-  form.value = { name: '', description: '', schema_fields: [] }
+  form.value = { name: '', description: '', schema_fields: [], rate_limit: 0, rate_limit_burst: 0 }
   dialogVisible.value = true
 }
 
@@ -158,6 +173,8 @@ function openEditDialog(source: DataSource) {
     name: source.name || '',
     description: source.description || '',
     schema_fields: schemaFields,
+    rate_limit: source.rate_limit || 0,
+    rate_limit_burst: source.rate_limit_burst || 0,
   }
   dialogVisible.value = true
 }
@@ -166,7 +183,13 @@ async function saveSource() {
   if (!form.value.name.trim()) return
   saving.value = true
   const schemaConfig = { fields: form.value.schema_fields.filter((f) => f.name.trim() !== '') }
-  const data = { name: form.value.name.trim(), description: form.value.description.trim(), schema_config: schemaConfig }
+  const data = {
+    name: form.value.name.trim(),
+    description: form.value.description.trim(),
+    schema_config: schemaConfig,
+    rate_limit: form.value.rate_limit || 0,
+    rate_limit_burst: form.value.rate_limit_burst || 0,
+  }
   try {
     if (isEditing.value && editingId.value) {
       await updateSource(editingId.value, data)

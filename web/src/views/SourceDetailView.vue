@@ -23,6 +23,12 @@
           </el-descriptions-item>
           <el-descriptions-item label="创建时间">{{ formatDate(source.created_at) }}</el-descriptions-item>
           <el-descriptions-item label="更新时间">{{ formatDate(source.updated_at) }}</el-descriptions-item>
+          <el-descriptions-item label="限流（每分钟请求数）">
+            {{ source.rate_limit ? source.rate_limit : '使用全局默认' }}
+          </el-descriptions-item>
+          <el-descriptions-item label="限流（突发量）">
+            {{ source.rate_limit_burst ? source.rate_limit_burst : '使用全局默认' }}
+          </el-descriptions-item>
         </el-descriptions>
 
         <!-- Schema 配置 -->
