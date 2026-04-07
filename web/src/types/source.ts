@@ -13,6 +13,7 @@ export interface SchemaConfig {
 
 export interface DataSource {
   id: number
+  collect_id: string
   name: string
   description: string
   schema_config: SchemaConfig | null

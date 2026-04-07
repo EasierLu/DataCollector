@@ -113,9 +113,9 @@ type InitializeRequest struct {
 
 // DatabaseConfigInit 数据库初始化配置
 type DatabaseConfigInit struct {
-	Driver   string                 `json:"driver" binding:"required"`
-	SQLite   config.SQLiteConfig    `json:"sqlite"`
-	Postgres config.PostgresConfig  `json:"postgres"`
+	Driver   string                `json:"driver" binding:"required"`
+	SQLite   config.SQLiteConfig   `json:"sqlite"`
+	Postgres config.PostgresConfig `json:"postgres"`
 }
 
 // ServerConfigInit 服务器初始化配置
@@ -163,18 +163,27 @@ func (h *SetupHandler) Initialize(c *gin.Context) {
 		return
 	}
 
-	// 5. 创建管理员用户
-	adminUser := &model.User{
-		Username:     req.Admin.Username,
-		PasswordHash: passwordHash,
-		Role:         "admin",
-		Status:       1,
-	}
-
-	_, err = h.store.CreateUser(c.Request.Context(), adminUser)
-	if err != nil {
-		model.SendError(c, http.StatusInternalServerError, model.CodeInitFailed, "failed to create admin user: "+err.Error())
-		return
+	// 5. 创建管理员用户（如果已存在则更新密码）
+	existingUser, _ := h.store.GetUserByUsername(c.Request.Context(), req.Admin.Username)
+	if existingUser != nil {
+		// 用户已存在，更新密码
+		existingUser.PasswordHash = passwordHash
+		if err := h.store.UpdateUser(c.Request.Context(), existingUser); err != nil {
+			model.SendError(c, http.StatusInternalServerError, model.CodeInitFailed, "failed to update admin user: "+err.Error())
+			return
+		}
+	} else {
+		adminUser := &model.User{
+			Username:     req.Admin.Username,
+			PasswordHash: passwordHash,
+			Role:         "admin",
+			Status:       1,
+		}
+		_, err = h.store.CreateUser(c.Request.Context(), adminUser)
+		if err != nil {
+			model.SendError(c, http.StatusInternalServerError, model.CodeInitFailed, "failed to create admin user: "+err.Error())
+			return
+		}
 	}
 
 	// 6. 设置系统配置

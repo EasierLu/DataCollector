@@ -83,6 +83,7 @@ func (h *SourceHandler) CreateSource(c *gin.Context) {
 	}
 
 	source := &model.DataSource{
+		CollectID:    model.GenerateCollectID(),
 		Name:         req.Name,
 		Description:  req.Description,
 		SchemaConfig: schemaConfig,

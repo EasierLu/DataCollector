@@ -14,11 +14,12 @@ func (s *SQLiteStore) CreateSource(ctx context.Context, source *model.DataSource
 	defer s.mu.Unlock()
 
 	query := `
-		INSERT INTO data_sources (name, description, schema_config, status, created_by, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO data_sources (collect_id, name, description, schema_config, status, created_by, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	now := time.Now()
 	result, err := s.db.ExecContext(ctx, query,
+		source.CollectID,
 		source.Name,
 		source.Description,
 		source.SchemaConfig,
@@ -37,7 +38,7 @@ func (s *SQLiteStore) CreateSource(ctx context.Context, source *model.DataSource
 // GetSourceByID 根据 ID 获取数据源
 func (s *SQLiteStore) GetSourceByID(ctx context.Context, id int64) (*model.DataSource, error) {
 	query := `
-		SELECT id, name, description, schema_config, status, created_by, created_at, updated_at
+		SELECT id, collect_id, name, description, schema_config, status, created_by, created_at, updated_at
 		FROM data_sources
 		WHERE id = ? AND status = 1
 	`
@@ -46,6 +47,38 @@ func (s *SQLiteStore) GetSourceByID(ctx context.Context, id int64) (*model.DataS
 	var source model.DataSource
 	err := row.Scan(
 		&source.ID,
+		&source.CollectID,
+		&source.Name,
+		&source.Description,
+		&source.SchemaConfig,
+		&source.Status,
+		&source.CreatedBy,
+		&source.CreatedAt,
+		&source.UpdatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return &source, nil
+}
+
+// GetSourceByCollectID 根据 CollectID 获取数据源
+func (s *SQLiteStore) GetSourceByCollectID(ctx context.Context, collectID string) (*model.DataSource, error) {
+	query := `
+		SELECT id, collect_id, name, description, schema_config, status, created_by, created_at, updated_at
+		FROM data_sources
+		WHERE collect_id = ? AND status = 1
+	`
+	row := s.db.QueryRowContext(ctx, query, collectID)
+
+	var source model.DataSource
+	err := row.Scan(
+		&source.ID,
+		&source.CollectID,
 		&source.Name,
 		&source.Description,
 		&source.SchemaConfig,
@@ -83,7 +116,7 @@ func (s *SQLiteStore) ListSources(ctx context.Context, page, size int) (*model.P
 
 	// 查询列表（包含 token_count）
 	query := `
-		SELECT s.id, s.name, s.description, s.schema_config, s.status, s.created_by, 
+		SELECT s.id, s.collect_id, s.name, s.description, s.schema_config, s.status, s.created_by, 
 		       s.created_at, s.updated_at, COUNT(t.id) as token_count
 		FROM data_sources s
 		LEFT JOIN data_tokens t ON s.id = t.source_id AND t.status = 1
@@ -104,6 +137,7 @@ func (s *SQLiteStore) ListSources(ctx context.Context, page, size int) (*model.P
 		var source model.DataSource
 		err := rows.Scan(
 			&source.ID,
+			&source.CollectID,
 			&source.Name,
 			&source.Description,
 			&source.SchemaConfig,

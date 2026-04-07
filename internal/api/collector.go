@@ -3,13 +3,12 @@ package api
 import (
 	"encoding/json"
 	"net/http"
-	"strconv"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/datacollector/datacollector/internal/collector"
 	"github.com/datacollector/datacollector/internal/model"
 	"github.com/datacollector/datacollector/internal/storage"
+	"github.com/gin-gonic/gin"
 )
 
 // CollectorHandler 数据采集 API Handler
@@ -27,7 +26,7 @@ func NewCollectorHandler(store storage.DataStore, processor *collector.Processor
 }
 
 // CollectData 处理单条数据提交
-// POST /api/v1/collect/:source_id
+// POST /api/v1/collect/:collect_id
 func (h *CollectorHandler) CollectData(c *gin.Context) {
 	ctx := c.Request.Context()
 
@@ -62,17 +61,25 @@ func (h *CollectorHandler) CollectData(c *gin.Context) {
 	}
 
 	// source_id 不匹配 URL 参数：返回 401, CodeInvalidToken
-	sourceIDParam := c.Param("source_id")
-	sourceID, err := strconv.ParseInt(sourceIDParam, 10, 64)
-	if err != nil {
-		model.SendError(c, http.StatusBadRequest, model.CodeParamMissing, "invalid source_id")
+	collectID := c.Param("collect_id")
+	if collectID == "" {
+		model.SendError(c, http.StatusBadRequest, model.CodeParamMissing, "invalid collect_id")
 		return
 	}
 
-	if tokenRecord.SourceID != sourceID {
+	// 通过 collect_id 获取数据源
+	source, err := h.store.GetSourceByCollectID(ctx, collectID)
+	if err != nil || source == nil {
+		model.SendError(c, http.StatusNotFound, model.CodeSourceNotFound, "")
+		return
+	}
+
+	if tokenRecord.SourceID != source.ID {
 		model.SendError(c, http.StatusUnauthorized, model.CodeInvalidToken, "")
 		return
 	}
+
+	sourceID := source.ID
 
 	// 5. 更新 token 的最后使用时间
 	if err := h.store.UpdateTokenLastUsed(ctx, tokenRecord.ID); err != nil {
@@ -80,12 +87,7 @@ func (h *CollectorHandler) CollectData(c *gin.Context) {
 		// log.Printf("failed to update token last used: %v", err)
 	}
 
-	// 6. 获取数据源配置
-	source, err := h.store.GetSourceByID(ctx, sourceID)
-	if err != nil {
-		model.SendError(c, http.StatusNotFound, model.CodeSourceNotFound, "")
-		return
-	}
+	// 6. 获取数据源配置（已在上方通过 collect_id 获取）
 
 	// 7. 解析请求体为 map[string]interface{}
 	var data map[string]interface{}
@@ -138,7 +140,7 @@ func (h *CollectorHandler) CollectData(c *gin.Context) {
 }
 
 // CollectBatchData 处理批量数据提交
-// POST /api/v1/collect/:source_id/batch
+// POST /api/v1/collect/:collect_id/batch
 func (h *CollectorHandler) CollectBatchData(c *gin.Context) {
 	ctx := c.Request.Context()
 
@@ -171,12 +173,20 @@ func (h *CollectorHandler) CollectBatchData(c *gin.Context) {
 		return
 	}
 
-	sourceIDParam := c.Param("source_id")
-	sourceID, err := strconv.ParseInt(sourceIDParam, 10, 64)
-	if err != nil {
-		model.SendError(c, http.StatusBadRequest, model.CodeParamMissing, "invalid source_id")
+	collectID := c.Param("collect_id")
+	if collectID == "" {
+		model.SendError(c, http.StatusBadRequest, model.CodeParamMissing, "invalid collect_id")
 		return
 	}
+
+	// 通过 collect_id 获取数据源
+	source, err := h.store.GetSourceByCollectID(ctx, collectID)
+	if err != nil || source == nil {
+		model.SendError(c, http.StatusNotFound, model.CodeSourceNotFound, "")
+		return
+	}
+
+	sourceID := source.ID
 
 	if tokenRecord.SourceID != sourceID {
 		model.SendError(c, http.StatusUnauthorized, model.CodeInvalidToken, "")
@@ -188,12 +198,7 @@ func (h *CollectorHandler) CollectBatchData(c *gin.Context) {
 		// 记录日志但不中断流程
 	}
 
-	// 6. 获取数据源配置
-	source, err := h.store.GetSourceByID(ctx, sourceID)
-	if err != nil {
-		model.SendError(c, http.StatusNotFound, model.CodeSourceNotFound, "")
-		return
-	}
+	// 6. 获取数据源配置（已在上方通过 collect_id 获取）
 
 	// 7. 解析请求体：{"records": [...]}
 	var batchRequest struct {
@@ -271,7 +276,7 @@ func (h *CollectorHandler) CollectBatchData(c *gin.Context) {
 func (h *CollectorHandler) RegisterRoutes(r *gin.RouterGroup) {
 	collect := r.Group("/collect")
 	{
-		collect.POST("/:source_id", h.CollectData)
-		collect.POST("/:source_id/batch", h.CollectBatchData)
+		collect.POST("/:collect_id", h.CollectData)
+		collect.POST("/:collect_id/batch", h.CollectBatchData)
 	}
 }

@@ -18,6 +18,9 @@
         </div>
         <el-descriptions :column="3" style="margin-top: 16px">
           <el-descriptions-item label="数据源 ID">{{ source.id }}</el-descriptions-item>
+          <el-descriptions-item label="采集标识">
+            <code style="background: #f3f4f6; padding: 2px 8px; border-radius: 4px; font-family: monospace">{{ source.collect_id }}</code>
+          </el-descriptions-item>
           <el-descriptions-item label="创建时间">{{ formatDate(source.created_at) }}</el-descriptions-item>
           <el-descriptions-item label="更新时间">{{ formatDate(source.updated_at) }}</el-descriptions-item>
         </el-descriptions>
@@ -167,7 +170,7 @@ const curlExample = computed(() => {
     fields['key'] = 'value'
   }
   const body = JSON.stringify(fields, null, 2)
-  return `curl -X POST ${origin}/api/v1/collect/${sourceId} \\
+  return `curl -X POST ${origin}/api/v1/collect/${source.value.collect_id || sourceId} \\
   -H "Content-Type: application/json" \\
   -H "X-Data-Token: dt_<your-token>" \\
   -d '${body}'`

@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS users (
 -- 数据源表
 CREATE TABLE IF NOT EXISTS data_sources (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    collect_id VARCHAR(16) UNIQUE NOT NULL,
     name VARCHAR(100) NOT NULL,
     description TEXT,
     schema_config TEXT NOT NULL,

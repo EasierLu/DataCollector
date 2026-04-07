@@ -22,6 +22,7 @@ type DataStore interface {
 	// 数据源管理
 	CreateSource(ctx context.Context, source *model.DataSource) (int64, error)
 	GetSourceByID(ctx context.Context, id int64) (*model.DataSource, error)
+	GetSourceByCollectID(ctx context.Context, collectID string) (*model.DataSource, error)
 	ListSources(ctx context.Context, page, size int) (*model.PageResult, error)
 	UpdateSource(ctx context.Context, source *model.DataSource) error
 	DeleteSource(ctx context.Context, id int64) error // 软删除
@@ -53,4 +54,7 @@ type DataStore interface {
 	GetConfig(ctx context.Context, key string) (string, error)
 	SetConfig(ctx context.Context, key, value string) error
 	GetAllConfigs(ctx context.Context) ([]*model.SystemConfig, error)
+
+	// 系统重置
+	ResetAllData(ctx context.Context) error
 }

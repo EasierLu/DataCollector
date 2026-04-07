@@ -35,15 +35,23 @@ func New(cfg *config.Config) (*PostgresStore, error) {
 
 // Init 初始化数据库（执行迁移）
 func (s *PostgresStore) Init(ctx context.Context) error {
-	// 读取迁移文件
+	// 读取并执行初始化迁移
 	sqlBytes, err := migrations.FS.ReadFile("001_init_postgres.sql")
 	if err != nil {
 		return fmt.Errorf("failed to read migration file: %w", err)
 	}
-
-	// 执行迁移
 	if _, err := s.db.ExecContext(ctx, string(sqlBytes)); err != nil {
 		return fmt.Errorf("failed to execute migration: %w", err)
+	}
+
+	// 执行增量迁移：添加 collect_id 字段
+	sqlBytes2, err := migrations.FS.ReadFile("002_add_collect_id_postgres.sql")
+	if err != nil {
+		return fmt.Errorf("failed to read migration file 002: %w", err)
+	}
+	if _, err := s.db.ExecContext(ctx, string(sqlBytes2)); err != nil {
+		// PostgreSQL 支持 IF NOT EXISTS，忽略已存在的错误
+		// 但如果列已存在 ALTER TABLE ADD COLUMN IF NOT EXISTS 不会报错
 	}
 
 	return nil

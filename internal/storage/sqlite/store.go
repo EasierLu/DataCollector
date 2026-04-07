@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -60,18 +61,50 @@ func (s *SQLiteStore) Init(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// 读取迁移文件
+	// 读取并执行初始化迁移
 	sqlBytes, err := migrations.FS.ReadFile("001_init_sqlite.sql")
 	if err != nil {
 		return fmt.Errorf("failed to read migration file: %w", err)
 	}
-
-	// 执行迁移
 	if _, err := s.db.ExecContext(ctx, string(sqlBytes)); err != nil {
 		return fmt.Errorf("failed to execute migration: %w", err)
 	}
 
+	// 执行增量迁移：添加 collect_id 字段
+	// 先检查列是否已存在
+	var colCount int
+	err = s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM pragma_table_info('data_sources') WHERE name='collect_id'").Scan(&colCount)
+	if err != nil {
+		return fmt.Errorf("failed to check collect_id column: %w", err)
+	}
+	if colCount == 0 {
+		sqlBytes2, err := migrations.FS.ReadFile("002_add_collect_id_sqlite.sql")
+		if err != nil {
+			return fmt.Errorf("failed to read migration file 002: %w", err)
+		}
+		statements := splitSQL(string(sqlBytes2))
+		for _, stmt := range statements {
+			if stmt != "" {
+				if _, err := s.db.ExecContext(ctx, stmt); err != nil {
+					return fmt.Errorf("failed to execute migration 002: %w", err)
+				}
+			}
+		}
+	}
+
 	return nil
+}
+
+// splitSQL 将 SQL 文件按分号拆分为多条语句
+func splitSQL(sql string) []string {
+	var result []string
+	for _, s := range strings.Split(sql, ";") {
+		s = strings.TrimSpace(s)
+		if s != "" && !strings.HasPrefix(s, "--") {
+			result = append(result, s)
+		}
+	}
+	return result
 }
 
 // Close 关闭数据库连接

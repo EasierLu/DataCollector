@@ -11,13 +11,14 @@ import (
 // CreateSource 创建数据源
 func (s *PostgresStore) CreateSource(ctx context.Context, source *model.DataSource) (int64, error) {
 	query := `
-		INSERT INTO data_sources (name, description, schema_config, status, created_by, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		INSERT INTO data_sources (collect_id, name, description, schema_config, status, created_by, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		RETURNING id
 	`
 	now := time.Now()
 	var id int64
 	err := s.db.QueryRowContext(ctx, query,
+		source.CollectID,
 		source.Name,
 		source.Description,
 		source.SchemaConfig,
@@ -36,7 +37,7 @@ func (s *PostgresStore) CreateSource(ctx context.Context, source *model.DataSour
 // GetSourceByID 根据 ID 获取数据源
 func (s *PostgresStore) GetSourceByID(ctx context.Context, id int64) (*model.DataSource, error) {
 	query := `
-		SELECT id, name, description, schema_config, status, created_by, created_at, updated_at
+		SELECT id, collect_id, name, description, schema_config, status, created_by, created_at, updated_at
 		FROM data_sources
 		WHERE id = $1 AND status = 1
 	`
@@ -45,6 +46,38 @@ func (s *PostgresStore) GetSourceByID(ctx context.Context, id int64) (*model.Dat
 	var source model.DataSource
 	err := row.Scan(
 		&source.ID,
+		&source.CollectID,
+		&source.Name,
+		&source.Description,
+		&source.SchemaConfig,
+		&source.Status,
+		&source.CreatedBy,
+		&source.CreatedAt,
+		&source.UpdatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return &source, nil
+}
+
+// GetSourceByCollectID 根据 CollectID 获取数据源
+func (s *PostgresStore) GetSourceByCollectID(ctx context.Context, collectID string) (*model.DataSource, error) {
+	query := `
+		SELECT id, collect_id, name, description, schema_config, status, created_by, created_at, updated_at
+		FROM data_sources
+		WHERE collect_id = $1 AND status = 1
+	`
+	row := s.db.QueryRowContext(ctx, query, collectID)
+
+	var source model.DataSource
+	err := row.Scan(
+		&source.ID,
+		&source.CollectID,
 		&source.Name,
 		&source.Description,
 		&source.SchemaConfig,
@@ -82,7 +115,7 @@ func (s *PostgresStore) ListSources(ctx context.Context, page, size int) (*model
 
 	// 查询列表（包含 token_count）
 	query := `
-		SELECT s.id, s.name, s.description, s.schema_config, s.status, s.created_by, 
+		SELECT s.id, s.collect_id, s.name, s.description, s.schema_config, s.status, s.created_by, 
 		       s.created_at, s.updated_at, COUNT(t.id) as token_count
 		FROM data_sources s
 		LEFT JOIN data_tokens t ON s.id = t.source_id AND t.status = 1
@@ -103,6 +136,7 @@ func (s *PostgresStore) ListSources(ctx context.Context, page, size int) (*model
 		var source model.DataSource
 		err := rows.Scan(
 			&source.ID,
+			&source.CollectID,
 			&source.Name,
 			&source.Description,
 			&source.SchemaConfig,

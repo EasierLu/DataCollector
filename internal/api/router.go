@@ -50,8 +50,8 @@ func RegisterRoutes(
 		collect.Use(rateLimiter.IPRateLimitMiddleware(cfg.Collector.RateLimitPerIP))
 		collect.Use(rateLimiter.TokenRateLimitMiddleware(cfg.Collector.RateLimitPerToken))
 		{
-			collect.POST("/:source_id", collectorHandler.CollectData)
-			collect.POST("/:source_id/batch", collectorHandler.CollectBatchData)
+			collect.POST("/:collect_id", collectorHandler.CollectData)
+			collect.POST("/:collect_id/batch", collectorHandler.CollectBatchData)
 		}
 
 		// 管理后台路由
@@ -69,7 +69,7 @@ func RegisterRoutes(
 
 				// 仪表盘
 				adminAuth.GET("/dashboard", dashboardHandler.GetDashboard)
-			adminAuth.GET("/dashboard/trend", dashboardHandler.GetDashboardTrend)
+				adminAuth.GET("/dashboard/trend", dashboardHandler.GetDashboardTrend)
 
 				// 数据源管理
 				sources := adminAuth.Group("/sources")

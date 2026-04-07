@@ -134,10 +134,10 @@ make docker-build
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| `POST` | `/api/v1/collect/:source_id` | 提交单条数据 |
-| `POST` | `/api/v1/collect/:source_id/batch` | 批量提交数据 |
+| `POST` | `/api/v1/collect/:collect_id` | 提交单条数据 |
+| `POST` | `/api/v1/collect/:collect_id/batch` | 批量提交数据 |
 
-数据采集接口通过 `X-Data-Token` 请求头进行认证。
+数据采集接口通过 `X-Data-Token` 请求头进行认证。`:collect_id` 是创建数据源时自动生成的 8 位随机短标识（如 `aB3xK9mZ`），替代数字 ID 以增强安全性。
 
 ### 管理后台
 

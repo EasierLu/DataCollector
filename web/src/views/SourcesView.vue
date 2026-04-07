@@ -10,6 +10,11 @@
     <el-card shadow="hover" v-loading="loading">
       <el-table :data="sources" stripe style="width: 100%">
         <el-table-column prop="id" label="ID" width="80" />
+        <el-table-column prop="collect_id" label="采集标识" width="120">
+          <template #default="{ row }">
+            <code style="font-size: 12px">{{ row.collect_id }}</code>
+          </template>
+        </el-table-column>
         <el-table-column prop="name" label="名称" min-width="150" />
         <el-table-column label="状态" width="100">
           <template #default="{ row }">
