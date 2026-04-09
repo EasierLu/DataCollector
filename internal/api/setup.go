@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -62,6 +63,12 @@ type TestDatabaseRequest struct {
 // TestDatabase 测试数据库连接
 // POST /api/v1/setup/test-db
 func (h *SetupHandler) TestDatabase(c *gin.Context) {
+	value, err := h.store.GetConfig(c.Request.Context(), "initialized")
+	if err == nil && value == "true" {
+		model.SendError(c, http.StatusForbidden, model.CodeAlreadyInitialized, "")
+		return
+	}
+
 	var req TestDatabaseRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		model.SendError(c, http.StatusBadRequest, model.CodeParamMissing, err.Error())
@@ -80,8 +87,18 @@ func (h *SetupHandler) TestDatabase(c *gin.Context) {
 		return
 	}
 
+	if req.Port < 1 || req.Port > 65535 {
+		model.SendError(c, http.StatusBadRequest, model.CodeParamMissing, "invalid port number")
+		return
+	}
+
+	if req.Host == "" || req.DBName == "" || req.User == "" {
+		model.SendError(c, http.StatusBadRequest, model.CodeParamMissing, "host, dbname and user are required")
+		return
+	}
+
 	// 构建连接字符串
-	dsn := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable",
+	dsn := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable connect_timeout=5",
 		req.Host, req.Port, req.User, req.Password, req.DBName)
 
 	// 尝试连接
@@ -164,7 +181,11 @@ func (h *SetupHandler) Initialize(c *gin.Context) {
 	}
 
 	// 5. 创建管理员用户（如果已存在则更新密码）
-	existingUser, _ := h.store.GetUserByUsername(c.Request.Context(), req.Admin.Username)
+	existingUser, err := h.store.GetUserByUsername(c.Request.Context(), req.Admin.Username)
+	if err != nil && !errors.Is(err, model.ErrNotFound) {
+		model.SendError(c, http.StatusInternalServerError, model.CodeInitFailed, "failed to check existing user: "+err.Error())
+		return
+	}
 	if existingUser != nil {
 		// 用户已存在，更新密码
 		existingUser.PasswordHash = passwordHash
@@ -241,18 +262,3 @@ func (h *SetupHandler) Reinitialize(c *gin.Context) {
 	model.SendSuccess(c, gin.H{"message": "system reinitialized, please restart the server"})
 }
 
-// RegisterRoutes 注册初始化相关路由
-func (h *SetupHandler) RegisterRoutes(r *gin.RouterGroup) {
-	setup := r.Group("/setup")
-	{
-		setup.GET("/status", h.CheckStatus)
-		setup.POST("/test-db", h.TestDatabase)
-		setup.POST("/init", h.Initialize)
-		// reinit 需要 JWT 认证，在外部注册时挂载到需要认证的路由组
-	}
-}
-
-// RegisterReinitRoute 注册重新初始化路由（需要认证）
-func (h *SetupHandler) RegisterReinitRoute(r *gin.RouterGroup) {
-	r.POST("/reinit", h.Reinitialize)
-}

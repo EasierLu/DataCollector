@@ -54,7 +54,7 @@ func (s *PostgresStore) GetTokenByHash(ctx context.Context, hash string) (*model
 		&token.CreatedAt,
 	)
 	if err == sql.ErrNoRows {
-		return nil, nil
+		return nil, model.ErrNotFound
 	}
 	if err != nil {
 		return nil, err

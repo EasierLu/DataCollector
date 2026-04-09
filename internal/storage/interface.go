@@ -45,6 +45,7 @@ type DataStore interface {
 
 	// 统计
 	IncrementStatCount(ctx context.Context, sourceID int64, date string) error
+	IncrementStatCountBy(ctx context.Context, sourceID int64, date string, count int64) error
 	GetStatsBySourceAndDateRange(ctx context.Context, sourceID int64, startDate, endDate string) ([]*model.Statistics, error)
 	GetTotalCountByDateRange(ctx context.Context, startDate, endDate string) (int64, error)
 	GetCountBySourceID(ctx context.Context, sourceID int64) (int64, error)

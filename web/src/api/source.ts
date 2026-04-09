@@ -6,6 +6,10 @@ export function listSources(page: number, size: number): Promise<PageResult<Data
   return request.get('/api/v1/admin/sources', { params: { page, size } })
 }
 
+export function getSourceById(id: number): Promise<DataSource> {
+  return request.get(`/api/v1/admin/sources/${id}`)
+}
+
 export function createSource(data: CreateSourceRequest): Promise<DataSource> {
   return request.post('/api/v1/admin/sources', data)
 }

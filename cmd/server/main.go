@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -34,7 +36,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 3. 创建数据目录和日志目录
+	// 3. 校验 JWT 密钥
+	validateJWTSecret(cfg, logger)
+
+	// 4. 创建数据目录和日志目录
 	ensureDirectories(cfg, logger)
 
 	// 4. 配置日志轮转（如果输出到文件，使用 lumberjack）
@@ -68,7 +73,7 @@ func main() {
 	logger.Info("JWT manager initialized")
 
 	// 7. 初始化 WebSocket Hub
-	hub := monitor.NewWebSocketHub(logger)
+	hub := monitor.NewWebSocketHub(logger, cfg.Collector.AllowedOrigins)
 	go hub.Run()
 	logger.Info("WebSocket hub started")
 
@@ -181,6 +186,30 @@ func ensureDirectories(cfg *config.Config, logger *slog.Logger) {
 			os.Exit(1)
 		}
 	}
+}
+
+const defaultJWTSecret = "change-me-to-a-secure-random-string"
+
+// validateJWTSecret checks if the JWT secret is still the insecure default value.
+// In release mode it refuses to start; in debug mode it generates a random ephemeral secret.
+func validateJWTSecret(cfg *config.Config, logger *slog.Logger) {
+	if cfg.JWT.Secret != defaultJWTSecret {
+		return
+	}
+
+	if cfg.Server.Mode == "release" {
+		logger.Error("JWT secret is still the default value — refusing to start in release mode. " +
+			"Set jwt.secret in config.yaml or JWT_SECRET environment variable.")
+		os.Exit(1)
+	}
+
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		logger.Error("failed to generate random JWT secret", "error", err)
+		os.Exit(1)
+	}
+	cfg.JWT.Secret = hex.EncodeToString(b)
+	logger.Warn("JWT secret was default — generated random ephemeral secret (set jwt.secret for production)")
 }
 
 // parseLogLevel 解析日志级别

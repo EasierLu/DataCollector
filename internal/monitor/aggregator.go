@@ -44,9 +44,9 @@ func (a *Aggregator) EventChannel() chan<- StatEvent {
 	return a.eventCh
 }
 
-// Start 启动聚合器后台 goroutine
+// Start 启动聚合器主循环（调用方应使用 go 启动）
 func (a *Aggregator) Start(ctx context.Context) {
-	go a.run(ctx)
+	a.run(ctx)
 }
 
 // run 聚合器主循环
@@ -63,11 +63,15 @@ func (a *Aggregator) run(ctx context.Context) {
 			a.flush(ctx)
 
 		case <-a.stopCh:
-			a.flush(ctx)
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			a.flush(shutdownCtx)
+			cancel()
 			return
 
 		case <-ctx.Done():
-			a.flush(ctx)
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			a.flush(shutdownCtx)
+			cancel()
 			return
 		}
 	}
@@ -108,19 +112,18 @@ func (a *Aggregator) flush(ctx context.Context) {
 	// 获取今天的日期
 	today := time.Now().Format("2006-01-02")
 
-	// 持久化到数据库
+	// 持久化到数据库（单次 SQL 调用）
 	for sourceID, count := range countersToFlush {
-		// 调用多次 IncrementStatCount 来增加计数
-		for i := int64(0); i < count; i++ {
-			if err := a.store.IncrementStatCount(ctx, sourceID, today); err != nil {
-				a.logger.Error("failed to increment stat count",
-					"error", err,
-					"source_id", sourceID,
-					"date", today,
-				)
-				// 只记录日志，不中断运行
-				break
-			}
+		if err := a.store.IncrementStatCountBy(ctx, sourceID, today, count); err != nil {
+			a.logger.Error("failed to increment stat count, recovering counters",
+				"error", err,
+				"source_id", sourceID,
+				"count", count,
+				"date", today,
+			)
+			a.mu.Lock()
+			a.counters[sourceID] += count
+			a.mu.Unlock()
 		}
 	}
 
@@ -176,16 +179,17 @@ func (a *Aggregator) ForceFlush(ctx context.Context) error {
 	var lastErr error
 
 	for sourceID, count := range countersToFlush {
-		for i := int64(0); i < count; i++ {
-			if err := a.store.IncrementStatCount(ctx, sourceID, today); err != nil {
-				lastErr = err
-				a.logger.Error("failed to increment stat count",
-					"error", err,
-					"source_id", sourceID,
-					"date", today,
-				)
-				break
-			}
+		if err := a.store.IncrementStatCountBy(ctx, sourceID, today, count); err != nil {
+			lastErr = err
+			a.logger.Error("failed to increment stat count",
+				"error", err,
+				"source_id", sourceID,
+				"count", count,
+				"date", today,
+			)
+			a.mu.Lock()
+			a.counters[sourceID] += count
+			a.mu.Unlock()
 		}
 	}
 

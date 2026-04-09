@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
@@ -30,9 +31,17 @@ func JWTAuthMiddleware(jwtManager *JWTManager) gin.HandlerFunc {
 			}
 		}
 
-		// 如果请求头没有 token，尝试从 URL 查询参数获取（支持 WebSocket）
+		// 如果请求头没有 token，尝试从 WebSocket 子协议获取
 		if tokenString == "" {
-			tokenString = c.Query("token")
+			if proto := c.GetHeader("Sec-WebSocket-Protocol"); proto != "" {
+				for _, p := range strings.Split(proto, ",") {
+					p = strings.TrimSpace(p)
+					if strings.HasPrefix(p, "access_token.") {
+						tokenString = strings.TrimPrefix(p, "access_token.")
+						break
+					}
+				}
+			}
 		}
 
 		if tokenString == "" {
@@ -44,7 +53,7 @@ func JWTAuthMiddleware(jwtManager *JWTManager) gin.HandlerFunc {
 		// 验证 token
 		claims, err := jwtManager.ValidateToken(tokenString)
 		if err != nil {
-			if err.Error() == "token expired" {
+			if errors.Is(err, ErrTokenExpired) {
 				model.SendError(c, http.StatusUnauthorized, model.CodeTokenExpired, "Token 已过期")
 			} else {
 				model.SendError(c, http.StatusUnauthorized, model.CodeInvalidJWT, "无效的 Token")

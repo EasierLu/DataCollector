@@ -106,7 +106,7 @@
           <el-input v-model="tokenForm.name" placeholder="例如：生产环境 Token" />
         </el-form-item>
         <el-form-item label="过期时间（可选）">
-          <el-date-picker v-model="tokenForm.expires_at" type="datetime" placeholder="留空表示永不过期" style="width: 100%" />
+          <el-date-picker v-model="tokenForm.expires_at" type="datetime" placeholder="留空表示永不过期" value-format="YYYY-MM-DDTHH:mm:ssZ" style="width: 100%" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -141,7 +141,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { ArrowLeft, Plus } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { listSources } from '@/api/source'
+import { getSourceById } from '@/api/source'
 import { listTokens, createToken, updateTokenStatus, deleteToken } from '@/api/token'
 import { formatDate } from '@/utils/format'
 import { copyToClipboard } from '@/utils/clipboard'
@@ -150,6 +150,10 @@ import type { DataToken } from '@/types/token'
 
 const route = useRoute()
 const sourceId = Number(route.params.id)
+
+if (isNaN(sourceId) || sourceId <= 0) {
+  ElMessage.error('无效的数据源 ID')
+}
 
 const loading = ref(true)
 const source = ref<Partial<DataSource>>({})
@@ -200,34 +204,21 @@ function getExampleValue(field: SchemaField): string {
 }
 
 async function loadSource() {
-  try {
-    const result = await listSources(1, 100)
-    const found = (result?.list || []).find((s: DataSource) => s.id === sourceId)
-    if (found) {
-      source.value = found
-      if (found.schema_config) {
-        try {
-          const schema = typeof found.schema_config === 'string' ? JSON.parse(found.schema_config) : found.schema_config
-          schemaFields.value = schema.fields || []
-        } catch {
-          schemaFields.value = []
-        }
-      }
+  const found = await getSourceById(sourceId)
+  source.value = found
+  if (found.schema_config) {
+    try {
+      const schema = typeof found.schema_config === 'string' ? JSON.parse(found.schema_config) : found.schema_config
+      schemaFields.value = schema.fields || []
+    } catch {
+      schemaFields.value = []
     }
-  } catch {
-    // handled
-  } finally {
-    loading.value = false
   }
 }
 
 async function loadTokens() {
-  try {
-    const result = await listTokens(sourceId)
-    tokens.value = result || []
-  } catch {
-    // handled
-  }
+  const result = await listTokens(sourceId)
+  tokens.value = result || []
 }
 
 function openCreateToken() {
@@ -303,8 +294,13 @@ async function handleDeleteToken(token: DataToken) {
 }
 
 onMounted(async () => {
-  await loadSource()
-  await loadTokens()
+  try {
+    await Promise.all([loadSource(), loadTokens()])
+  } catch {
+    ElMessage.error('加载数据源信息失败')
+  } finally {
+    loading.value = false
+  }
 })
 </script>
 

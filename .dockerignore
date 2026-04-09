@@ -1,0 +1,13 @@
+.git
+.gitignore
+*.md
+*.docx
+data/
+logs/
+node_modules/
+web/node_modules/
+web/dist/
+.env
+.env.*
+docker-compose.yml
+.dockerignore

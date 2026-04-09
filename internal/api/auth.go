@@ -1,7 +1,9 @@
 package api
 
 import (
+	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/datacollector/datacollector/internal/auth"
 	"github.com/datacollector/datacollector/internal/model"
@@ -99,13 +101,8 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 	}
 
 	// 解析 Bearer token
-	parts := make([]string, 0)
-	for i, part := range splitAuthHeader(authHeader) {
-		if i < 2 {
-			parts = append(parts, part)
-		}
-	}
-	if len(parts) != 2 || parts[0] != "Bearer" {
+	parts := strings.SplitN(authHeader, " ", 2)
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
 		model.SendError(c, http.StatusUnauthorized, model.CodeInvalidJWT, "invalid Authorization format")
 		return
 	}
@@ -115,9 +112,9 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 	// 刷新 token
 	newToken, expiresIn, err := h.jwtManager.RefreshToken(tokenString)
 	if err != nil {
-		if err.Error() == "token expired" {
+		if errors.Is(err, auth.ErrTokenExpired) {
 			model.SendError(c, http.StatusUnauthorized, model.CodeTokenExpired, "")
-		} else if err.Error() == "token can only be refreshed when less than 2 hours remaining" {
+		} else if errors.Is(err, auth.ErrRefreshTooEarly) {
 			model.SendError(c, http.StatusBadRequest, model.CodeInvalidJWT, err.Error())
 		} else {
 			model.SendError(c, http.StatusUnauthorized, model.CodeInvalidJWT, err.Error())
@@ -149,7 +146,7 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 
 	// 获取用户信息
 	user, err := h.store.GetUserByID(c.Request.Context(), userID.(int64))
-	if err != nil || user == nil {
+	if err != nil {
 		model.SendError(c, http.StatusInternalServerError, model.CodePasswordChangeFail, "用户不存在")
 		return
 	}
@@ -177,22 +174,3 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 	model.SendSuccess(c, nil)
 }
 
-// splitAuthHeader 分割 Authorization 头
-func splitAuthHeader(header string) []string {
-	result := make([]string, 0)
-	current := ""
-	for _, ch := range header {
-		if ch == ' ' {
-			if current != "" {
-				result = append(result, current)
-				current = ""
-			}
-		} else {
-			current += string(ch)
-		}
-	}
-	if current != "" {
-		result = append(result, current)
-	}
-	return result
-}

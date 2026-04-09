@@ -42,7 +42,10 @@ func (h *ExportHandler) ExportData(c *gin.Context) {
 		return
 	}
 
-	// 获取所有匹配记录
+	const maxExportRows = 100000
+	filter.ExportLimit = maxExportRows
+
+	// 获取所有匹配记录（受限）
 	records, err := h.store.ExportRecords(c.Request.Context(), filter)
 	if err != nil {
 		model.SendError(c, http.StatusInternalServerError, model.CodeExportFailed, err.Error())

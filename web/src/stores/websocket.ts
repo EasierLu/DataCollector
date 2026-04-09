@@ -1,16 +1,18 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { useAuthStore } from '@/stores/auth'
 
 export const useWebSocketStore = defineStore('websocket', () => {
   const connected = ref(false)
   let ws: WebSocket | null = null
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
   let messageHandlers: Set<(data: any) => void> = new Set()
+  let reconnectDelay = 1000
+  const maxReconnectDelay = 60000
 
   function getUrl(): string {
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const token = localStorage.getItem('jwt_token')
-    return `${protocol}//${location.host}/api/v1/admin/ws/monitor?token=${token}`
+    return `${protocol}//${location.host}/api/v1/admin/ws/monitor`
   }
 
   function cleanup() {
@@ -22,11 +24,15 @@ export const useWebSocketStore = defineStore('websocket', () => {
 
   function connect() {
     cleanup()
+    const authStore = useAuthStore()
+    if (!authStore.token) return
+
     try {
-      ws = new WebSocket(getUrl())
+      ws = new WebSocket(getUrl(), [`access_token.${authStore.token}`])
 
       ws.onopen = () => {
         connected.value = true
+        reconnectDelay = 1000
       }
 
       ws.onmessage = (event) => {
@@ -40,7 +46,8 @@ export const useWebSocketStore = defineStore('websocket', () => {
 
       ws.onclose = () => {
         connected.value = false
-        reconnectTimer = setTimeout(connect, 5000)
+        reconnectTimer = setTimeout(connect, reconnectDelay)
+        reconnectDelay = Math.min(reconnectDelay * 2, maxReconnectDelay)
       }
 
       ws.onerror = () => {
@@ -58,6 +65,8 @@ export const useWebSocketStore = defineStore('websocket', () => {
       ws = null
     }
     connected.value = false
+    messageHandlers.clear()
+    reconnectDelay = 1000
   }
 
   function reconnect() {
@@ -67,7 +76,6 @@ export const useWebSocketStore = defineStore('websocket', () => {
 
   function onMessage(handler: (data: any) => void) {
     messageHandlers.add(handler)
-    // 返回取消订阅函数
     return () => {
       messageHandlers.delete(handler)
     }

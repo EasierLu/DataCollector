@@ -61,7 +61,7 @@ func (s *SQLiteStore) GetSourceByID(ctx context.Context, id int64) (*model.DataS
 		&source.RateLimitBurst,
 	)
 	if err == sql.ErrNoRows {
-		return nil, nil
+		return nil, model.ErrNotFound
 	}
 	if err != nil {
 		return nil, err
@@ -94,7 +94,7 @@ func (s *SQLiteStore) GetSourceByCollectID(ctx context.Context, collectID string
 		&source.RateLimitBurst,
 	)
 	if err == sql.ErrNoRows {
-		return nil, nil
+		return nil, model.ErrNotFound
 	}
 	if err != nil {
 		return nil, err

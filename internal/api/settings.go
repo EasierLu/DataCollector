@@ -4,6 +4,8 @@ import (
 	"context"
 	"net/http"
 	"strconv"
+	"sync"
+	"time"
 
 	"github.com/datacollector/datacollector/internal/model"
 	"github.com/datacollector/datacollector/internal/storage"
@@ -76,6 +78,8 @@ func (h *SettingsHandler) UpdateRateLimitSettings(c *gin.Context) {
 		}
 	}
 
+	InvalidateRateLimitCache()
+
 	model.SendSuccess(c, req)
 }
 
@@ -84,8 +88,41 @@ func (h *SettingsHandler) loadRateLimitSettings(ctx context.Context) RateLimitSe
 	return LoadRateLimitSettings(ctx, h.store)
 }
 
-// LoadRateLimitSettings 从 store 加载全局限流配置（供外部使用）
+var (
+	rateLimitCacheMu   sync.RWMutex
+	rateLimitCacheVal  *RateLimitSettings
+	rateLimitCacheTime time.Time
+	rateLimitCacheTTL  = 30 * time.Second
+)
+
+// InvalidateRateLimitCache clears the cached rate limit settings.
+func InvalidateRateLimitCache() {
+	rateLimitCacheMu.Lock()
+	rateLimitCacheVal = nil
+	rateLimitCacheMu.Unlock()
+}
+
+// LoadRateLimitSettings 从 store 加载全局限流配置（带缓存，供外部使用）
 func LoadRateLimitSettings(ctx context.Context, store storage.DataStore) RateLimitSettings {
+	rateLimitCacheMu.RLock()
+	if rateLimitCacheVal != nil && time.Since(rateLimitCacheTime) < rateLimitCacheTTL {
+		cached := *rateLimitCacheVal
+		rateLimitCacheMu.RUnlock()
+		return cached
+	}
+	rateLimitCacheMu.RUnlock()
+
+	settings := loadRateLimitSettingsFromDB(ctx, store)
+
+	rateLimitCacheMu.Lock()
+	rateLimitCacheVal = &settings
+	rateLimitCacheTime = time.Now()
+	rateLimitCacheMu.Unlock()
+
+	return settings
+}
+
+func loadRateLimitSettingsFromDB(ctx context.Context, store storage.DataStore) RateLimitSettings {
 	settings := RateLimitSettings{
 		RateLimitPerIP:         DefaultRateLimitPerIP,
 		RateLimitPerIPBurst:    DefaultRateLimitPerIPBurst,

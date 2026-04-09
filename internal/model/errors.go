@@ -1,5 +1,10 @@
 package model
 
+import "errors"
+
+// ErrNotFound is returned when a requested record does not exist in the store.
+var ErrNotFound = errors.New("record not found")
+
 // 错误码常量定义
 const (
 	CodeSuccess = 0

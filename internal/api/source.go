@@ -40,6 +40,24 @@ type UpdateSourceRequest struct {
 	RateLimitBurst int             `json:"rate_limit_burst"`
 }
 
+// GetSource 获取单个数据源
+// GET /api/v1/admin/sources/:id
+func (h *SourceHandler) GetSource(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		model.SendError(c, http.StatusBadRequest, model.CodeParamMissing, "invalid source id")
+		return
+	}
+
+	source, err := h.store.GetSourceByID(c.Request.Context(), id)
+	if err != nil {
+		model.SendError(c, http.StatusNotFound, model.CodeSourceNotFound, "")
+		return
+	}
+
+	model.SendSuccess(c, source)
+}
+
 // ListSources 获取数据源列表
 // GET /api/v1/admin/sources
 func (h *SourceHandler) ListSources(c *gin.Context) {

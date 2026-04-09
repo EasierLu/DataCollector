@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/datacollector/datacollector/internal/model"
@@ -37,53 +38,64 @@ func (h *DashboardHandler) GetDashboard(c *gin.Context) {
 	ctx := c.Request.Context()
 	now := time.Now()
 
-	// 计算今日数据量
-	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	todayEnd := todayStart.AddDate(0, 0, 1).Add(-time.Second)
-	todayCount, err := h.store.GetTotalCountByDateRange(ctx, todayStart.Format("2006-01-02"), todayEnd.Format("2006-01-02"))
-	if err != nil {
-		todayCount = 0
-	}
-
-	// 计算本周数据量（周一到今天）
+	todayStr := now.Format("2006-01-02")
 	weekday := int(now.Weekday())
 	if weekday == 0 {
 		weekday = 7
 	}
-	weekStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).AddDate(0, 0, -(weekday - 1))
-	weekEnd := now
-	weekCount, err := h.store.GetTotalCountByDateRange(ctx, weekStart.Format("2006-01-02"), weekEnd.Format("2006-01-02"))
-	if err != nil {
-		weekCount = 0
-	}
+	weekStartStr := now.AddDate(0, 0, -(weekday - 1)).Format("2006-01-02")
+	monthStartStr := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location()).Format("2006-01-02")
 
-	// 计算本月数据量（1号到今天）
-	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
-	monthEnd := now
-	monthCount, err := h.store.GetTotalCountByDateRange(ctx, monthStart.Format("2006-01-02"), monthEnd.Format("2006-01-02"))
-	if err != nil {
-		monthCount = 0
-	}
+	var (
+		todayCount    int64
+		weekCount     int64
+		monthCount    int64
+		totalSources  int64
+		recentRecords []*model.DataRecord
+		wg            sync.WaitGroup
+	)
 
-	// 获取数据源总数
-	sourcesResult, err := h.store.ListSources(ctx, 1, 1)
-	var totalSources int64
-	if err == nil && sourcesResult != nil {
-		totalSources = sourcesResult.Total
-	}
+	wg.Add(5)
 
-	// 获取最近的数据记录
-	recentFilter := model.RecordFilter{
-		Page: 1,
-		Size: 10,
-	}
-	recentResult, err := h.store.QueryRecords(ctx, recentFilter)
-	var recentRecords []*model.DataRecord
-	if err == nil && recentResult != nil {
-		if list, ok := recentResult.List.([]*model.DataRecord); ok {
-			recentRecords = list
+	go func() {
+		defer wg.Done()
+		if v, err := h.store.GetTotalCountByDateRange(ctx, todayStr, todayStr); err == nil {
+			todayCount = v
 		}
-	}
+	}()
+
+	go func() {
+		defer wg.Done()
+		if v, err := h.store.GetTotalCountByDateRange(ctx, weekStartStr, todayStr); err == nil {
+			weekCount = v
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+		if v, err := h.store.GetTotalCountByDateRange(ctx, monthStartStr, todayStr); err == nil {
+			monthCount = v
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+		if result, err := h.store.ListSources(ctx, 1, 1); err == nil && result != nil {
+			totalSources = result.Total
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+		recentFilter := model.RecordFilter{Page: 1, Size: 10}
+		if result, err := h.store.QueryRecords(ctx, recentFilter); err == nil && result != nil {
+			if list, ok := result.List.([]*model.DataRecord); ok {
+				recentRecords = list
+			}
+		}
+	}()
+
+	wg.Wait()
 
 	model.SendSuccess(c, DashboardResponse{
 		TodayCount:    todayCount,

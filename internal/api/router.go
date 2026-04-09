@@ -63,8 +63,13 @@ func RegisterRoutes(
 		// 管理后台路由
 		admin := apiV1.Group("/admin")
 		{
-			// 登录接口 - 不需要 JWT 认证
-			admin.POST("/login", authHandler.Login)
+			// 登录接口 - 不需要 JWT 认证，但受 IP 限流保护
+			admin.POST("/login",
+				rateLimiter.IPRateLimitMiddleware(func(ctx context.Context) (float64, int) {
+					return 10.0 / 60.0, 5 // 10 requests/min, burst 5
+				}),
+				authHandler.Login,
+			)
 
 			// 需要 JWT 认证的路由
 			adminAuth := admin.Group("")
@@ -84,6 +89,7 @@ func RegisterRoutes(
 				sources := adminAuth.Group("/sources")
 				{
 					sources.GET("", sourceHandler.ListSources)
+					sources.GET("/:id", sourceHandler.GetSource)
 					sources.POST("", sourceHandler.CreateSource)
 					sources.PUT("/:id", sourceHandler.UpdateSource)
 					sources.DELETE("/:id", sourceHandler.DeleteSource)

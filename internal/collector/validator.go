@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"regexp"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/datacollector/datacollector/internal/model"
@@ -15,6 +16,10 @@ import (
 var (
 	emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
 )
+
+const maxPatternLength = 256
+
+var patternCache sync.Map
 
 // ValidateData 根据 SchemaConfig 验证提交的数据
 // data: 用户提交的数据 map
@@ -68,8 +73,16 @@ func ValidateData(data map[string]interface{}, schema *model.SchemaConfig) map[s
 
 			// 正则匹配验证
 			if field.Pattern != "" {
-				matched, err := regexp.MatchString(field.Pattern, strValue)
-				if err != nil || !matched {
+				if len(field.Pattern) > maxPatternLength {
+					errors[field.Name] = "pattern too complex"
+					continue
+				}
+				re, err := compilePattern(field.Pattern)
+				if err != nil {
+					errors[field.Name] = "invalid pattern"
+					continue
+				}
+				if !re.MatchString(strValue) {
 					errors[field.Name] = "pattern mismatch"
 					continue
 				}
@@ -81,6 +94,19 @@ func ValidateData(data map[string]interface{}, schema *model.SchemaConfig) map[s
 		return errors
 	}
 	return nil
+}
+
+// compilePattern compiles and caches a regex pattern.
+func compilePattern(pattern string) (*regexp.Regexp, error) {
+	if cached, ok := patternCache.Load(pattern); ok {
+		return cached.(*regexp.Regexp), nil
+	}
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return nil, err
+	}
+	patternCache.Store(pattern, re)
+	return re, nil
 }
 
 // isEmptyValue 检查值是否为空

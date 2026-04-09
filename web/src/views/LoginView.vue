@@ -38,7 +38,7 @@ const form = ref({ username: '', password: '' })
 const loading = ref(false)
 const error = ref('')
 
-const isValid = computed(() => form.value.username.trim() !== '' && form.value.password.length >= 1)
+const isValid = computed(() => form.value.username.trim() !== '' && form.value.password.length >= 6)
 
 async function handleLogin() {
   if (!isValid.value || loading.value) return

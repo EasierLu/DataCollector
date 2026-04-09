@@ -206,12 +206,18 @@ func (s *SQLiteStore) ExportRecords(ctx context.Context, filter model.RecordFilt
 		whereClause = "WHERE " + strings.Join(conditions, " AND ")
 	}
 
+	limitClause := ""
+	if filter.ExportLimit > 0 {
+		limitClause = fmt.Sprintf("LIMIT %d", filter.ExportLimit)
+	}
+
 	query := fmt.Sprintf(`
 		SELECT id, source_id, token_id, data, ip_address, user_agent, created_at
 		FROM data_records
 		%s
 		ORDER BY created_at DESC
-	`, whereClause)
+		%s
+	`, whereClause, limitClause)
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {

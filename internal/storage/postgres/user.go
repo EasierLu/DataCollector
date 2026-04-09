@@ -52,7 +52,7 @@ func (s *PostgresStore) GetUserByUsername(ctx context.Context, username string) 
 		&user.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
-		return nil, nil
+		return nil, model.ErrNotFound
 	}
 	if err != nil {
 		return nil, err
@@ -81,7 +81,7 @@ func (s *PostgresStore) GetUserByID(ctx context.Context, id int64) (*model.User,
 		&user.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
-		return nil, nil
+		return nil, model.ErrNotFound
 	}
 	if err != nil {
 		return nil, err

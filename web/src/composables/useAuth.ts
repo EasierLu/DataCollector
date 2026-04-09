@@ -1,21 +1,22 @@
 import { onMounted, onUnmounted } from 'vue'
+import { useAuthStore } from '@/stores/auth'
 import { refreshToken } from '@/api/auth'
 
 export function useTokenRefresh() {
+  const authStore = useAuthStore()
   let timer: ReturnType<typeof setInterval> | null = null
 
   function start() {
     timer = setInterval(async () => {
-      const token = localStorage.getItem('jwt_token')
-      if (!token) return
+      if (!authStore.token) return
       try {
-        const payload = JSON.parse(atob(token.split('.')[1]))
+        const payload = JSON.parse(atob(authStore.token.split('.')[1]))
         const exp = payload.exp * 1000
         const remaining = exp - Date.now()
         if (remaining < 2 * 60 * 60 * 1000 && remaining > 0) {
           const result = await refreshToken()
           if (result?.token) {
-            localStorage.setItem('jwt_token', result.token)
+            authStore.setToken(result.token)
           }
         }
       } catch {

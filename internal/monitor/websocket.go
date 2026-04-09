@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -13,12 +14,14 @@ import (
 
 // WebSocketHub 管理所有 WebSocket 连接
 type WebSocketHub struct {
-	clients    map[*Client]bool
-	broadcast  chan []byte
-	register   chan *Client
-	unregister chan *Client
-	mu         sync.RWMutex
-	logger     *slog.Logger
+	clients        map[*Client]bool
+	broadcast      chan []byte
+	register       chan *Client
+	unregister     chan *Client
+	mu             sync.RWMutex
+	logger         *slog.Logger
+	allowedOrigins []string
+	stopCh         chan struct{}
 }
 
 // Client 代表一个 WebSocket 客户端连接
@@ -41,22 +44,35 @@ type StatsUpdateData struct {
 	Timestamp  time.Time `json:"timestamp"`
 }
 
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-	CheckOrigin: func(r *http.Request) bool {
-		return true
-	},
+func newUpgrader(allowedOrigins []string) websocket.Upgrader {
+	return websocket.Upgrader{
+		ReadBufferSize:  1024,
+		WriteBufferSize: 1024,
+		CheckOrigin: func(r *http.Request) bool {
+			origin := r.Header.Get("Origin")
+			if origin == "" {
+				return true
+			}
+			for _, o := range allowedOrigins {
+				if o == "*" || o == origin {
+					return true
+				}
+			}
+			return false
+		},
+	}
 }
 
 // NewWebSocketHub 创建新的 WebSocket Hub
-func NewWebSocketHub(logger *slog.Logger) *WebSocketHub {
+func NewWebSocketHub(logger *slog.Logger, allowedOrigins []string) *WebSocketHub {
 	return &WebSocketHub{
-		clients:    make(map[*Client]bool),
-		broadcast:  make(chan []byte),
-		register:   make(chan *Client),
-		unregister: make(chan *Client),
-		logger:     logger,
+		clients:        make(map[*Client]bool),
+		broadcast:      make(chan []byte),
+		register:       make(chan *Client),
+		unregister:     make(chan *Client),
+		logger:         logger,
+		allowedOrigins: allowedOrigins,
+		stopCh:         make(chan struct{}),
 	}
 }
 
@@ -64,6 +80,16 @@ func NewWebSocketHub(logger *slog.Logger) *WebSocketHub {
 func (h *WebSocketHub) Run() {
 	for {
 		select {
+		case <-h.stopCh:
+			h.mu.Lock()
+			for client := range h.clients {
+				close(client.send)
+				client.conn.Close()
+				delete(h.clients, client)
+			}
+			h.mu.Unlock()
+			return
+
 		case client := <-h.register:
 			h.mu.Lock()
 			h.clients[client] = true
@@ -105,6 +131,11 @@ func (h *WebSocketHub) Run() {
 	}
 }
 
+// Stop gracefully shuts down the Hub's Run loop.
+func (h *WebSocketHub) Stop() {
+	close(h.stopCh)
+}
+
 // BroadcastStatsUpdate 广播统计数据更新通知
 // 通知所有连接的客户端重新获取统计数据
 func (h *WebSocketHub) BroadcastStatsUpdate() {
@@ -128,7 +159,22 @@ func (h *WebSocketHub) BroadcastStatsUpdate() {
 
 // HandleWebSocket 处理 WebSocket 连接升级
 func (h *WebSocketHub) HandleWebSocket(c *gin.Context) {
-	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+	up := newUpgrader(h.allowedOrigins)
+
+	// gorilla/websocket skips manually set Sec-WebSocket-Protocol response
+	// headers, so we must use the Upgrader.Subprotocols field for negotiation.
+	// Echo back the client's full sub-protocol so the browser accepts the upgrade.
+	if proto := c.GetHeader("Sec-WebSocket-Protocol"); proto != "" {
+		for _, p := range strings.Split(proto, ",") {
+			p = strings.TrimSpace(p)
+			if strings.HasPrefix(p, "access_token.") {
+				up.Subprotocols = []string{p}
+				break
+			}
+		}
+	}
+
+	conn, err := up.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		h.logger.Error("websocket upgrade failed", "error", err)
 		return

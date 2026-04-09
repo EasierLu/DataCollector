@@ -53,7 +53,7 @@ func (s *SQLiteStore) GetUserByUsername(ctx context.Context, username string) (*
 		&user.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
-		return nil, nil
+		return nil, model.ErrNotFound
 	}
 	if err != nil {
 		return nil, err
@@ -82,7 +82,7 @@ func (s *SQLiteStore) GetUserByID(ctx context.Context, id int64) (*model.User, e
 		&user.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
-		return nil, nil
+		return nil, model.ErrNotFound
 	}
 	if err != nil {
 		return nil, err

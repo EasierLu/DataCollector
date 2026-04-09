@@ -8,6 +8,11 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+var (
+	ErrTokenExpired   = errors.New("token expired")
+	ErrRefreshTooEarly = errors.New("token can only be refreshed when less than 2 hours remaining")
+)
+
 // Claims JWT 自定义声明
 type Claims struct {
 	UserID   int64  `json:"user_id"`
@@ -69,7 +74,7 @@ func (j *JWTManager) ValidateToken(tokenString string) (*Claims, error) {
 
 	if err != nil {
 		if errors.Is(err, jwt.ErrTokenExpired) {
-			return nil, errors.New("token expired")
+			return nil, ErrTokenExpired
 		}
 		return nil, err
 	}
@@ -92,7 +97,7 @@ func (j *JWTManager) RefreshToken(tokenString string) (string, int64, error) {
 	if claims.ExpiresAt != nil {
 		remaining := time.Until(claims.ExpiresAt.Time)
 		if remaining > 2*time.Hour {
-			return "", 0, errors.New("token can only be refreshed when less than 2 hours remaining")
+			return "", 0, ErrRefreshTooEarly
 		}
 	}
 

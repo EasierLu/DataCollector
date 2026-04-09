@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
@@ -41,95 +42,35 @@ func (h *CollectorHandler) CollectData(c *gin.Context) {
 		return
 	}
 
-	// 2. 计算 SHA-256 哈希
-	tokenHash := hashToken(token)
-
-	// 3. 通过 store.GetTokenByHash 查找 token 记录
-	tokenRecord, err := h.store.GetTokenByHash(ctx, tokenHash)
-	if err != nil || tokenRecord == nil {
-		model.SendError(c, http.StatusUnauthorized, model.CodeInvalidToken, "")
+	// 2-4. 验证 Token 和数据源
+	source, tokenRecord, err := h.validateCollectRequest(ctx, c, token)
+	if err != nil {
 		return
 	}
 
-	// 4. 验证 token
-	// status=0：返回 403, CodeTokenDisabled
-	if tokenRecord.Status == 0 {
-		model.SendError(c, http.StatusForbidden, model.CodeTokenDisabled, "")
-		return
-	}
-
-	// 已过期（expires_at 不为 nil 且已过期）：返回 401, CodeInvalidToken
-	if tokenRecord.ExpiresAt != nil && time.Now().After(*tokenRecord.ExpiresAt) {
-		model.SendError(c, http.StatusUnauthorized, model.CodeInvalidToken, "")
-		return
-	}
-
-	// source_id 不匹配 URL 参数：返回 401, CodeInvalidToken
-	collectID := c.Param("collect_id")
-	if collectID == "" {
-		model.SendError(c, http.StatusBadRequest, model.CodeParamMissing, "invalid collect_id")
-		return
-	}
-
-	// 通过 collect_id 获取数据源
-	source, err := h.store.GetSourceByCollectID(ctx, collectID)
-	if err != nil || source == nil {
-		model.SendError(c, http.StatusNotFound, model.CodeSourceNotFound, "")
-		return
-	}
-
-	if tokenRecord.SourceID != source.ID {
-		model.SendError(c, http.StatusUnauthorized, model.CodeInvalidToken, "")
-		return
-	}
-
-	// Token/Source 级别限流（令牌桶算法）
-	if h.rateLimiter != nil {
-		rps, burst := h.getSourceRateLimit(ctx, source)
-		if rps > 0 {
-			key := "token:" + token
-			if !h.rateLimiter.Allow(key, rps, burst) {
-				model.SendError(c, http.StatusTooManyRequests, model.CodeRateLimitExceeded, "请求频率超限，请稍后再试")
-				return
-			}
-		}
-	}
-
-	sourceID := source.ID
-
-	// 5. 更新 token 的最后使用时间
-	if err := h.store.UpdateTokenLastUsed(ctx, tokenRecord.ID); err != nil {
-		// 记录日志但不中断流程
-		// log.Printf("failed to update token last used: %v", err)
-	}
-
-	// 6. 获取数据源配置（已在上方通过 collect_id 获取）
-
-	// 7. 解析请求体为 map[string]interface{}
+	// 6. 解析请求体为 map[string]interface{}
 	var data map[string]interface{}
 	if err := c.ShouldBindJSON(&data); err != nil {
 		model.SendError(c, http.StatusBadRequest, model.CodeParamMissing, "invalid request body")
 		return
 	}
 
-	// 8. 解析数据源的 schema_config 为 model.SchemaConfig
+	// 7. 解析数据源的 schema_config 为 model.SchemaConfig
 	var schemaConfig model.SchemaConfig
 	if len(source.SchemaConfig) > 0 {
 		if err := json.Unmarshal(source.SchemaConfig, &schemaConfig); err != nil {
-			// schema 解析失败，使用空配置（允许自由格式数据）
 			schemaConfig = model.SchemaConfig{}
 		}
 	}
 
-	// 9. 调用 collector.ValidateData 验证数据
+	// 8. 调用 collector.ValidateData 验证数据
 	validationErrors := collector.ValidateData(data, &schemaConfig)
 	if validationErrors != nil {
-		// 10. 验证失败：返回 400, CodeValidationFailed，errors 字段包含验证错误
 		model.SendValidationError(c, validationErrors)
 		return
 	}
 
-	// 11. 构建 DataRecord（包含 IP、User-Agent）
+	// 9. 构建 DataRecord（包含 IP、User-Agent）
 	dataJSON, err := json.Marshal(data)
 	if err != nil {
 		model.SendError(c, http.StatusInternalServerError, model.CodeInternalError, "failed to marshal data")
@@ -137,21 +78,20 @@ func (h *CollectorHandler) CollectData(c *gin.Context) {
 	}
 
 	record := &model.DataRecord{
-		SourceID:  sourceID,
+		SourceID:  source.ID,
 		TokenID:   tokenRecord.ID,
 		Data:      dataJSON,
 		IPAddress: c.ClientIP(),
 		UserAgent: c.GetHeader("User-Agent"),
 	}
 
-	// 12. 调用 processor.ProcessRecord 持久化
+	// 10. 调用 processor.ProcessRecord 持久化
 	_, err = h.processor.ProcessRecord(ctx, record)
 	if err != nil {
 		model.SendError(c, http.StatusInternalServerError, model.CodeInternalError, "failed to save record")
 		return
 	}
 
-	// 13. 返回成功
 	model.SendSuccess(c, gin.H{})
 }
 
@@ -160,7 +100,6 @@ func (h *CollectorHandler) CollectData(c *gin.Context) {
 func (h *CollectorHandler) CollectBatchData(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	// 1-6 步骤与单条提交相同
 	// 1. 从 X-Data-Token 头获取 token
 	token := c.GetHeader("X-Data-Token")
 	if token == "" {
@@ -168,67 +107,13 @@ func (h *CollectorHandler) CollectBatchData(c *gin.Context) {
 		return
 	}
 
-	// 2. 计算 SHA-256 哈希
-	tokenHash := hashToken(token)
-
-	// 3. 通过 store.GetTokenByHash 查找 token 记录
-	tokenRecord, err := h.store.GetTokenByHash(ctx, tokenHash)
-	if err != nil || tokenRecord == nil {
-		model.SendError(c, http.StatusUnauthorized, model.CodeInvalidToken, "")
+	// 2-4. 验证 Token 和数据源
+	source, _, err := h.validateCollectRequest(ctx, c, token)
+	if err != nil {
 		return
 	}
 
-	// 4. 验证 token
-	if tokenRecord.Status == 0 {
-		model.SendError(c, http.StatusForbidden, model.CodeTokenDisabled, "")
-		return
-	}
-
-	if tokenRecord.ExpiresAt != nil && time.Now().After(*tokenRecord.ExpiresAt) {
-		model.SendError(c, http.StatusUnauthorized, model.CodeInvalidToken, "")
-		return
-	}
-
-	collectID := c.Param("collect_id")
-	if collectID == "" {
-		model.SendError(c, http.StatusBadRequest, model.CodeParamMissing, "invalid collect_id")
-		return
-	}
-
-	// 通过 collect_id 获取数据源
-	source, err := h.store.GetSourceByCollectID(ctx, collectID)
-	if err != nil || source == nil {
-		model.SendError(c, http.StatusNotFound, model.CodeSourceNotFound, "")
-		return
-	}
-
-	sourceID := source.ID
-
-	if tokenRecord.SourceID != sourceID {
-		model.SendError(c, http.StatusUnauthorized, model.CodeInvalidToken, "")
-		return
-	}
-
-	// Token/Source 级别限流（令牌桶算法）
-	if h.rateLimiter != nil {
-		rps, burst := h.getSourceRateLimit(ctx, source)
-		if rps > 0 {
-			key := "token:" + token
-			if !h.rateLimiter.Allow(key, rps, burst) {
-				model.SendError(c, http.StatusTooManyRequests, model.CodeRateLimitExceeded, "请求频率超限，请稍后再试")
-				return
-			}
-		}
-	}
-
-	// 5. 更新 token 的最后使用时间
-	if err := h.store.UpdateTokenLastUsed(ctx, tokenRecord.ID); err != nil {
-		// 记录日志但不中断流程
-	}
-
-	// 6. 获取数据源配置（已在上方通过 collect_id 获取）
-
-	// 7. 解析请求体：{"records": [...]}
+	// 5. 解析请求体：{"records": [...]}
 	var batchRequest struct {
 		Records []map[string]interface{} `json:"records" binding:"required"`
 	}
@@ -242,7 +127,13 @@ func (h *CollectorHandler) CollectBatchData(c *gin.Context) {
 		return
 	}
 
-	// 8. 解析数据源的 schema_config
+	const maxBatchSize = 100
+	if len(batchRequest.Records) > maxBatchSize {
+		model.SendError(c, http.StatusBadRequest, model.CodeParamMissing, "batch size exceeds maximum of 100 records")
+		return
+	}
+
+	// 6. 解析数据源的 schema_config
 	var schemaConfig model.SchemaConfig
 	if len(source.SchemaConfig) > 0 {
 		if err := json.Unmarshal(source.SchemaConfig, &schemaConfig); err != nil {
@@ -255,14 +146,12 @@ func (h *CollectorHandler) CollectBatchData(c *gin.Context) {
 	validationErrors := make(map[int]map[string]string)
 
 	for i, data := range batchRequest.Records {
-		// 验证数据
 		errors := collector.ValidateData(data, &schemaConfig)
 		if errors != nil {
 			validationErrors[i] = errors
 			continue
 		}
 
-		// 构建记录
 		dataJSON, err := json.Marshal(data)
 		if err != nil {
 			validationErrors[i] = map[string]string{"_error": "failed to marshal data"}
@@ -270,8 +159,7 @@ func (h *CollectorHandler) CollectBatchData(c *gin.Context) {
 		}
 
 		record := &model.DataRecord{
-			SourceID:  sourceID,
-			TokenID:   tokenRecord.ID,
+			SourceID:  source.ID,
 			Data:      dataJSON,
 			IPAddress: c.ClientIP(),
 			UserAgent: c.GetHeader("User-Agent"),
@@ -300,14 +188,62 @@ func (h *CollectorHandler) CollectBatchData(c *gin.Context) {
 	})
 }
 
-// RegisterCollectorRoutes 注册采集路由
-func (h *CollectorHandler) RegisterRoutes(r *gin.RouterGroup) {
-	collect := r.Group("/collect")
-	{
-		collect.POST("/:collect_id", h.CollectData)
-		collect.POST("/:collect_id/batch", h.CollectBatchData)
+// validateCollectRequest validates the data token and source for a collect request.
+// Returns the source, token record, or an error (the error response is already sent to the client).
+func (h *CollectorHandler) validateCollectRequest(ctx context.Context, c *gin.Context, rawToken string) (*model.DataSource, *model.DataToken, error) {
+	tokenHash := hashToken(rawToken)
+
+	tokenRecord, err := h.store.GetTokenByHash(ctx, tokenHash)
+	if err != nil {
+		model.SendError(c, http.StatusUnauthorized, model.CodeInvalidToken, "")
+		return nil, nil, err
 	}
+
+	if tokenRecord.Status == 0 {
+		model.SendError(c, http.StatusForbidden, model.CodeTokenDisabled, "")
+		return nil, nil, errRequestHandled
+	}
+
+	if tokenRecord.ExpiresAt != nil && time.Now().After(*tokenRecord.ExpiresAt) {
+		model.SendError(c, http.StatusUnauthorized, model.CodeInvalidToken, "")
+		return nil, nil, errRequestHandled
+	}
+
+	collectID := c.Param("collect_id")
+	if collectID == "" {
+		model.SendError(c, http.StatusBadRequest, model.CodeParamMissing, "invalid collect_id")
+		return nil, nil, errRequestHandled
+	}
+
+	source, err := h.store.GetSourceByCollectID(ctx, collectID)
+	if err != nil {
+		model.SendError(c, http.StatusNotFound, model.CodeSourceNotFound, "")
+		return nil, nil, err
+	}
+
+	if tokenRecord.SourceID != source.ID {
+		model.SendError(c, http.StatusUnauthorized, model.CodeInvalidToken, "")
+		return nil, nil, errRequestHandled
+	}
+
+	if h.rateLimiter != nil {
+		rps, burst := h.getSourceRateLimit(ctx, source)
+		if rps > 0 {
+			key := "token:" + rawToken
+			if !h.rateLimiter.Allow(key, rps, burst) {
+				model.SendError(c, http.StatusTooManyRequests, model.CodeRateLimitExceeded, "请求频率超限，请稍后再试")
+				return nil, nil, errRequestHandled
+			}
+		}
+	}
+
+	_ = h.store.UpdateTokenLastUsed(ctx, tokenRecord.ID)
+
+	return source, tokenRecord, nil
 }
+
+// errRequestHandled is a sentinel indicating the HTTP response was already sent.
+var errRequestHandled = errors.New("request already handled")
 
 // getSourceRateLimit 获取数据源的限流参数（每秒请求数和突发量）
 // 优先使用数据源级别配置，若未配置则回退全局默认值

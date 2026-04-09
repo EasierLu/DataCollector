@@ -24,6 +24,23 @@ func (s *SQLiteStore) IncrementStatCount(ctx context.Context, sourceID int64, da
 	return err
 }
 
+// IncrementStatCountBy 增加统计计数指定数量（UPSERT）
+func (s *SQLiteStore) IncrementStatCountBy(ctx context.Context, sourceID int64, date string, count int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	query := `
+		INSERT INTO statistics (source_id, stat_date, count, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT(source_id, stat_date) DO UPDATE SET
+			count = count + excluded.count,
+			updated_at = excluded.updated_at
+	`
+	now := time.Now()
+	_, err := s.db.ExecContext(ctx, query, sourceID, date, count, now, now)
+	return err
+}
+
 // GetStatsBySourceAndDateRange 获取指定数据源在日期范围内的统计
 func (s *SQLiteStore) GetStatsBySourceAndDateRange(ctx context.Context, sourceID int64, startDate, endDate string) ([]*model.Statistics, error) {
 	query := `

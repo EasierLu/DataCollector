@@ -18,11 +18,12 @@ type DataRecord struct {
 
 // RecordFilter 分页查询参数
 type RecordFilter struct {
-	SourceID  int64  `form:"source_id"`
-	StartDate string `form:"start_date"` // 2024-01-01 格式
-	EndDate   string `form:"end_date"`
-	Page      int    `form:"page"`
-	Size      int    `form:"size"`
+	SourceID    int64  `form:"source_id"`
+	StartDate   string `form:"start_date"` // 2024-01-01 格式
+	EndDate     string `form:"end_date"`
+	Page        int    `form:"page"`
+	Size        int    `form:"size"`
+	ExportLimit int    `form:"-"`
 }
 
 // PageResult 分页结果

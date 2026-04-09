@@ -60,7 +60,7 @@ func (s *PostgresStore) GetSourceByID(ctx context.Context, id int64) (*model.Dat
 		&source.RateLimitBurst,
 	)
 	if err == sql.ErrNoRows {
-		return nil, nil
+		return nil, model.ErrNotFound
 	}
 	if err != nil {
 		return nil, err
@@ -93,7 +93,7 @@ func (s *PostgresStore) GetSourceByCollectID(ctx context.Context, collectID stri
 		&source.RateLimitBurst,
 	)
 	if err == sql.ErrNoRows {
-		return nil, nil
+		return nil, model.ErrNotFound
 	}
 	if err != nil {
 		return nil, err

@@ -21,6 +21,20 @@ func (s *PostgresStore) IncrementStatCount(ctx context.Context, sourceID int64, 
 	return err
 }
 
+// IncrementStatCountBy 增加统计计数指定数量（UPSERT）
+func (s *PostgresStore) IncrementStatCountBy(ctx context.Context, sourceID int64, date string, count int64) error {
+	query := `
+		INSERT INTO statistics (source_id, stat_date, count, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $4)
+		ON CONFLICT (source_id, stat_date) DO UPDATE SET
+			count = statistics.count + EXCLUDED.count,
+			updated_at = EXCLUDED.updated_at
+	`
+	now := time.Now()
+	_, err := s.db.ExecContext(ctx, query, sourceID, date, count, now)
+	return err
+}
+
 // GetStatsBySourceAndDateRange 获取指定数据源在日期范围内的统计
 func (s *PostgresStore) GetStatsBySourceAndDateRange(ctx context.Context, sourceID int64, startDate, endDate string) ([]*model.Statistics, error) {
 	query := `

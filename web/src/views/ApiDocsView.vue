@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { marked } from 'marked'
+import DOMPurify from 'dompurify'
 import apiDocsMd from '@/docs/api.md?raw'
 
-const renderedHtml = marked(apiDocsMd) as string
+const renderedHtml = DOMPurify.sanitize(marked(apiDocsMd) as string)
 </script>
 
 <template>
