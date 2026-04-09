@@ -63,6 +63,76 @@ func (s *SQLiteStore) GetRecordByID(ctx context.Context, id int64) (*model.DataR
 	return &record, nil
 }
 
+// GetLastRecordBySourceID 获取指定数据源的最后一条记录
+func (s *SQLiteStore) GetLastRecordBySourceID(ctx context.Context, sourceID int64) (*model.DataRecord, error) {
+	query := `
+		SELECT id, source_id, token_id, data, ip_address, user_agent, created_at
+		FROM data_records
+		WHERE source_id = ?
+		ORDER BY id DESC
+		LIMIT 1
+	`
+	row := s.db.QueryRowContext(ctx, query, sourceID)
+
+	var record model.DataRecord
+	err := row.Scan(
+		&record.ID,
+		&record.SourceID,
+		&record.TokenID,
+		&record.Data,
+		&record.IPAddress,
+		&record.UserAgent,
+		&record.CreatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return &record, nil
+}
+
+// GetRecordsByIDRange 根据 ID 范围获取指定数据源的记录
+func (s *SQLiteStore) GetRecordsByIDRange(ctx context.Context, sourceID int64, startID, endID int64) ([]*model.DataRecord, error) {
+	query := `
+		SELECT id, source_id, token_id, data, ip_address, user_agent, created_at
+		FROM data_records
+		WHERE source_id = ? AND id >= ? AND id <= ?
+		ORDER BY id ASC
+	`
+	rows, err := s.db.QueryContext(ctx, query, sourceID, startID, endID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var records []*model.DataRecord
+	for rows.Next() {
+		var record model.DataRecord
+		err := rows.Scan(
+			&record.ID,
+			&record.SourceID,
+			&record.TokenID,
+			&record.Data,
+			&record.IPAddress,
+			&record.UserAgent,
+			&record.CreatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		records = append(records, &record)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return records, nil
+}
+
 // QueryRecords 分页查询数据记录
 func (s *SQLiteStore) QueryRecords(ctx context.Context, filter model.RecordFilter) (*model.PageResult, error) {
 	// 处理默认值

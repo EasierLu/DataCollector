@@ -20,6 +20,8 @@ CREATE TABLE IF NOT EXISTS data_sources (
     description TEXT,
     schema_config TEXT NOT NULL,
     status INTEGER DEFAULT 1 NOT NULL,
+    rate_limit INTEGER DEFAULT 0 NOT NULL,
+    rate_limit_burst INTEGER DEFAULT 0 NOT NULL,
     created_by INTEGER NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -75,6 +77,19 @@ CREATE TABLE IF NOT EXISTS system_configs (
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- API Key 表（用于数据查询等操作，与数据上报 Token 无关）
+CREATE TABLE IF NOT EXISTS api_keys (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    key_hash VARCHAR(255) UNIQUE NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    permissions VARCHAR(255) DEFAULT 'query' NOT NULL,
+    expires_at DATETIME,
+    last_used_at DATETIME,
+    created_by INTEGER NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (created_by) REFERENCES users(id)
+);
+
 -- 创建索引
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);
@@ -95,3 +110,5 @@ CREATE INDEX IF NOT EXISTS idx_statistics_stat_date ON statistics(stat_date);
 CREATE INDEX IF NOT EXISTS idx_statistics_source_date ON statistics(source_id, stat_date);
 
 CREATE INDEX IF NOT EXISTS idx_configs_key ON system_configs(config_key);
+
+CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash);

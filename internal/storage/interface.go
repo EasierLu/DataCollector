@@ -35,9 +35,19 @@ type DataStore interface {
 	UpdateTokenLastUsed(ctx context.Context, id int64) error
 	DeleteToken(ctx context.Context, id int64) error
 
+	// API Key 管理（独立于 Data Token，用于数据查询等操作）
+	CreateApiKey(ctx context.Context, apiKey *model.ApiKey) (int64, error)
+	GetApiKeyByHash(ctx context.Context, hash string) (*model.ApiKey, error)
+	ListApiKeys(ctx context.Context) ([]*model.ApiKey, error)
+	UpdateApiKeyPermissions(ctx context.Context, id int64, permissions string) error
+	UpdateApiKeyLastUsed(ctx context.Context, id int64) error
+	DeleteApiKey(ctx context.Context, id int64) error
+
 	// 数据记录
 	CreateRecord(ctx context.Context, record *model.DataRecord) (int64, error)
 	GetRecordByID(ctx context.Context, id int64) (*model.DataRecord, error)
+	GetLastRecordBySourceID(ctx context.Context, sourceID int64) (*model.DataRecord, error)
+	GetRecordsByIDRange(ctx context.Context, sourceID int64, startID, endID int64) ([]*model.DataRecord, error)
 	QueryRecords(ctx context.Context, filter model.RecordFilter) (*model.PageResult, error)
 	DeleteRecord(ctx context.Context, id int64) error
 	DeleteRecordsByIDs(ctx context.Context, ids []int64) (int64, error)

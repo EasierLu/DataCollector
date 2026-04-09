@@ -32,6 +32,9 @@ const (
 	// 数据查询 4000-4099
 	CodeQueryParamError = 4000
 	CodeExportFailed    = 4001
+	CodeRecordNotFound  = 4002
+	CodeInvalidIDRange  = 4003
+	CodeInvalidAPIKey   = 4004
 
 	// 系统运维 5000-5099
 	CodeSystemUnhealthy    = 5000
@@ -71,6 +74,9 @@ var ErrorMessages = map[int]string{
 	// 数据查询
 	CodeQueryParamError: "查询参数错误",
 	CodeExportFailed:    "导出失败",
+	CodeRecordNotFound:  "记录不存在",
+	CodeInvalidIDRange:  "无效的ID范围",
+	CodeInvalidAPIKey:   "无效的API Key",
 
 	// 系统运维
 	CodeSystemUnhealthy:    "系统状态异常",

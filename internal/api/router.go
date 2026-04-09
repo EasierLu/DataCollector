@@ -7,6 +7,7 @@ import (
 	"github.com/datacollector/datacollector/internal/collector"
 	"github.com/datacollector/datacollector/internal/config"
 	"github.com/datacollector/datacollector/internal/middleware"
+	"github.com/datacollector/datacollector/internal/model"
 	"github.com/datacollector/datacollector/internal/storage"
 	"github.com/gin-gonic/gin"
 )
@@ -32,6 +33,8 @@ func RegisterRoutes(
 	setupHandler := NewSetupHandler(store, cfg, jwtManager)
 	collectorHandler := NewCollectorHandler(store, processor, rateLimiter)
 	settingsHandler := NewSettingsHandler(store)
+	queryHandler := NewQueryHandler(store)
+	apiKeyHandler := NewApiKeyHandler(store)
 
 	// API v1 路由组
 	apiV1 := r.Group("/api/v1")
@@ -58,6 +61,15 @@ func RegisterRoutes(
 		{
 			collect.POST("/:collect_id", collectorHandler.CollectData)
 			collect.POST("/:collect_id/batch", collectorHandler.CollectBatchData)
+		}
+
+		// 数据查询路由 - 使用 API Key (Data Token) 认证
+		query := apiV1.Group("/query")
+		query.Use(APIKeyAuthMiddleware(store, model.PermissionQuery))
+		{
+			query.GET("/:collect_id/last", queryHandler.GetLastRecord)
+			query.GET("/:collect_id/record/:record_id", queryHandler.GetRecord)
+			query.POST("/:collect_id/records", queryHandler.BatchQueryRecords)
 		}
 
 		// 管理后台路由
@@ -119,6 +131,13 @@ func RegisterRoutes(
 				{
 					settings.GET("/rate-limit", settingsHandler.GetRateLimitSettings)
 					settings.PUT("/rate-limit", settingsHandler.UpdateRateLimitSettings)
+
+					// API Key 管理
+					settings.GET("/api-keys", apiKeyHandler.ListApiKeys)
+					settings.GET("/api-keys/permissions", apiKeyHandler.ListPermissions)
+					settings.POST("/api-keys", apiKeyHandler.CreateApiKey)
+					settings.PUT("/api-keys/:id/permissions", apiKeyHandler.UpdateApiKeyPermissions)
+					settings.DELETE("/api-keys/:id", apiKeyHandler.DeleteApiKey)
 				}
 
 				// 数据导出

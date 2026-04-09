@@ -66,49 +66,12 @@ func (s *SQLiteStore) Init(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to read migration file: %w", err)
 	}
-	if _, err := s.db.ExecContext(ctx, string(sqlBytes)); err != nil {
-		return fmt.Errorf("failed to execute migration: %w", err)
-	}
 
-	// 执行增量迁移：添加 collect_id 字段
-	// 先检查列是否已存在
-	var colCount int
-	err = s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM pragma_table_info('data_sources') WHERE name='collect_id'").Scan(&colCount)
-	if err != nil {
-		return fmt.Errorf("failed to check collect_id column: %w", err)
-	}
-	if colCount == 0 {
-		sqlBytes2, err := migrations.FS.ReadFile("002_add_collect_id_sqlite.sql")
-		if err != nil {
-			return fmt.Errorf("failed to read migration file 002: %w", err)
-		}
-		statements := splitSQL(string(sqlBytes2))
-		for _, stmt := range statements {
-			if stmt != "" {
-				if _, err := s.db.ExecContext(ctx, stmt); err != nil {
-					return fmt.Errorf("failed to execute migration 002: %w", err)
-				}
-			}
-		}
-	}
-
-	// 执行增量迁移 003：添加限流字段
-	var rlColCount int
-	err = s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM pragma_table_info('data_sources') WHERE name='rate_limit'").Scan(&rlColCount)
-	if err != nil {
-		return fmt.Errorf("failed to check rate_limit column: %w", err)
-	}
-	if rlColCount == 0 {
-		sqlBytes3, err := migrations.FS.ReadFile("003_add_rate_limit_sqlite.sql")
-		if err != nil {
-			return fmt.Errorf("failed to read migration file 003: %w", err)
-		}
-		statements3 := splitSQL(string(sqlBytes3))
-		for _, stmt := range statements3 {
-			if stmt != "" {
-				if _, err := s.db.ExecContext(ctx, stmt); err != nil {
-					return fmt.Errorf("failed to execute migration 003: %w", err)
-				}
+	statements := splitSQL(string(sqlBytes))
+	for _, stmt := range statements {
+		if stmt != "" {
+			if _, err := s.db.ExecContext(ctx, stmt); err != nil {
+				return fmt.Errorf("failed to execute migration: %w", err)
 			}
 		}
 	}
@@ -146,6 +109,7 @@ func (s *SQLiteStore) ResetAllData(ctx context.Context) error {
 		"data_records",
 		"statistics",
 		"data_tokens",
+		"api_keys",
 		"data_sources",
 		"users",
 		"system_configs",
