@@ -48,6 +48,52 @@
             </el-table-column>
           </el-table>
         </div>
+
+        <!-- Webhook 配置 -->
+        <div style="margin-top: 20px; border-top: 1px solid #f3f4f6; padding-top: 16px">
+          <h4 style="font-size: 14px; color: #374151; margin-bottom: 12px">Webhook 配置</h4>
+          <el-descriptions :column="3">
+            <el-descriptions-item label="状态">
+              <el-tag :type="source.webhook_enabled ? 'success' : 'info'" size="small">
+                {{ source.webhook_enabled ? '已启用' : '未启用' }}
+              </el-tag>
+            </el-descriptions-item>
+            <template v-if="source.webhook_enabled && webhookConfig">
+              <el-descriptions-item label="URL">
+                <code style="background: #f3f4f6; padding: 2px 8px; border-radius: 4px; font-family: monospace; word-break: break-all">
+                  {{ webhookConfig.url }}
+                </code>
+              </el-descriptions-item>
+              <el-descriptions-item label="HTTP 方法">
+                <el-tag size="small">{{ webhookConfig.method }}</el-tag>
+              </el-descriptions-item>
+              <el-descriptions-item label="Secret">
+                {{ webhookConfig.secret ? '••••••••' : '未设置' }}
+              </el-descriptions-item>
+              <el-descriptions-item label="超时">
+                {{ webhookConfig.timeout || 10 }} 秒
+              </el-descriptions-item>
+              <el-descriptions-item label="重试策略">
+                最多 {{ webhookConfig.retry_count ?? 3 }} 次，间隔 {{ webhookConfig.retry_interval || 5 }} 秒
+              </el-descriptions-item>
+            </template>
+          </el-descriptions>
+          <template v-if="source.webhook_enabled && webhookConfig">
+            <div v-if="webhookHeadersList.length > 0" style="margin-top: 12px">
+              <div style="font-size: 13px; color: #6b7280; margin-bottom: 8px">自定义 Headers</div>
+              <el-table :data="webhookHeadersList" size="small" border>
+                <el-table-column prop="key" label="名称" />
+                <el-table-column prop="value" label="值" />
+              </el-table>
+            </div>
+            <div v-if="webhookConfig.body_template" style="margin-top: 12px">
+              <div style="font-size: 13px; color: #6b7280; margin-bottom: 8px">请求体模板</div>
+              <div class="curl-display">
+                <pre class="curl-code">{{ webhookConfig.body_template }}</pre>
+              </div>
+            </div>
+          </template>
+        </div>
       </el-card>
 
       <!-- 调用示例 -->
@@ -145,7 +191,7 @@ import { getSourceById } from '@/api/source'
 import { listTokens, createToken, updateTokenStatus, deleteToken } from '@/api/token'
 import { formatDate } from '@/utils/format'
 import { copyToClipboard } from '@/utils/clipboard'
-import type { DataSource, SchemaField } from '@/types/source'
+import type { DataSource, SchemaField, WebhookConfig } from '@/types/source'
 import type { DataToken } from '@/types/token'
 
 const route = useRoute()
@@ -159,6 +205,8 @@ const loading = ref(true)
 const source = ref<Partial<DataSource>>({})
 const schemaFields = ref<SchemaField[]>([])
 const tokens = ref<DataToken[]>([])
+const webhookConfig = ref<WebhookConfig | null>(null)
+const webhookHeadersList = ref<{ key: string; value: string }[]>([])
 
 // 创建 Token
 const createTokenVisible = ref(false)
@@ -213,6 +261,22 @@ async function loadSource() {
     } catch {
       schemaFields.value = []
     }
+  }
+  // 解析 webhook 配置
+  if (found.webhook_config) {
+    try {
+      const wc = typeof found.webhook_config === 'string' ? JSON.parse(found.webhook_config) : found.webhook_config
+      webhookConfig.value = wc
+      webhookHeadersList.value = wc.headers
+        ? Object.entries(wc.headers).map(([key, value]) => ({ key, value: value as string }))
+        : []
+    } catch {
+      webhookConfig.value = null
+      webhookHeadersList.value = []
+    }
+  } else {
+    webhookConfig.value = null
+    webhookHeadersList.value = []
   }
 }
 

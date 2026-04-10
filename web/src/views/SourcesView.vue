@@ -100,6 +100,65 @@
           </div>
           <div class="empty-tip">设为 0 表示使用系统设置中的全局默认值</div>
         </el-form-item>
+
+        <!-- Webhook 配置 -->
+        <el-divider content-position="left">Webhook 配置</el-divider>
+        <el-form-item label="启用 Webhook">
+          <el-switch v-model="form.webhook_enabled" active-text="启用" inactive-text="禁用" />
+        </el-form-item>
+        <template v-if="form.webhook_enabled">
+          <el-form-item label="URL" required>
+            <el-input v-model="form.webhook_config.url" placeholder="https://example.com/webhook" />
+          </el-form-item>
+          <el-form-item label="HTTP 方法">
+            <el-select v-model="form.webhook_config.method" style="width: 100%">
+              <el-option label="POST" value="POST" />
+              <el-option label="GET" value="GET" />
+              <el-option label="PUT" value="PUT" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="Secret（HMAC 签名密钥）">
+            <el-input v-model="form.webhook_config.secret" type="password" show-password placeholder="留空则不签名" />
+          </el-form-item>
+          <el-form-item label="超时 / 重试">
+            <div style="width: 100%; display: flex; gap: 12px">
+              <div style="flex: 1">
+                <div style="font-size: 12px; color: #6b7280; margin-bottom: 4px">超时（秒）</div>
+                <el-input-number v-model="form.webhook_config.timeout" :min="1" :max="60" style="width: 100%" />
+              </div>
+              <div style="flex: 1">
+                <div style="font-size: 12px; color: #6b7280; margin-bottom: 4px">重试次数</div>
+                <el-input-number v-model="form.webhook_config.retry_count" :min="0" :max="10" style="width: 100%" />
+              </div>
+              <div style="flex: 1">
+                <div style="font-size: 12px; color: #6b7280; margin-bottom: 4px">重试间隔（秒）</div>
+                <el-input-number v-model="form.webhook_config.retry_interval" :min="1" :max="300" style="width: 100%" />
+              </div>
+            </div>
+          </el-form-item>
+          <el-form-item label="自定义 Headers">
+            <div style="width: 100%">
+              <div v-for="(header, index) in webhookHeaders" :key="index" class="schema-field-row">
+                <el-input v-model="header.key" placeholder="Header 名称" style="flex: 1" />
+                <el-input v-model="header.value" placeholder="Header 值" style="flex: 1" />
+                <el-button text type="danger" @click="webhookHeaders.splice(index, 1)">
+                  <el-icon><Delete /></el-icon>
+                </el-button>
+              </div>
+              <el-button text type="primary" @click="webhookHeaders.push({ key: '', value: '' })">
+                <el-icon class="el-icon--left"><Plus /></el-icon>添加 Header
+              </el-button>
+            </div>
+          </el-form-item>
+          <el-form-item label="请求体模板">
+            <el-input
+              v-model="form.webhook_config.body_template"
+              type="textarea"
+              :rows="4"
+              placeholder="可用变量：.Event, .SourceID, .SourceName, .CollectID, .RecordID, .Data, .Timestamp"
+            />
+          </el-form-item>
+        </template>
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
@@ -115,7 +174,7 @@ import { Plus, Delete, More } from '@element-plus/icons-vue'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import { listSources, createSource, updateSource, deleteSource } from '@/api/source'
 import { formatDate } from '@/utils/format'
-import type { DataSource, SchemaField } from '@/types/source'
+import type { DataSource, SchemaField, WebhookConfig } from '@/types/source'
 
 const loading = ref(true)
 const sources = ref<DataSource[]>([])
@@ -127,12 +186,42 @@ const dialogVisible = ref(false)
 const isEditing = ref(false)
 const editingId = ref<number | null>(null)
 const saving = ref(false)
-const form = ref<{ name: string; description: string; schema_fields: SchemaField[]; rate_limit: number; rate_limit_burst: number }>({
+
+interface WebhookHeaderEntry {
+  key: string
+  value: string
+}
+const webhookHeaders = ref<WebhookHeaderEntry[]>([])
+
+function getDefaultWebhookConfig(): WebhookConfig {
+  return {
+    url: '',
+    method: 'POST',
+    headers: {},
+    secret: '',
+    timeout: 10,
+    retry_count: 3,
+    retry_interval: 5,
+    body_template: '',
+  }
+}
+
+const form = ref<{
+  name: string
+  description: string
+  schema_fields: SchemaField[]
+  rate_limit: number
+  rate_limit_burst: number
+  webhook_enabled: boolean
+  webhook_config: WebhookConfig
+}>({
   name: '',
   description: '',
   schema_fields: [],
   rate_limit: 0,
   rate_limit_burst: 0,
+  webhook_enabled: false,
+  webhook_config: getDefaultWebhookConfig(),
 })
 
 async function loadSources() {
@@ -151,7 +240,8 @@ async function loadSources() {
 function openCreateDialog() {
   isEditing.value = false
   editingId.value = null
-  form.value = { name: '', description: '', schema_fields: [], rate_limit: 0, rate_limit_burst: 0 }
+  form.value = { name: '', description: '', schema_fields: [], rate_limit: 0, rate_limit_burst: 0, webhook_enabled: false, webhook_config: getDefaultWebhookConfig() }
+  webhookHeaders.value = []
   dialogVisible.value = true
 }
 
@@ -169,12 +259,22 @@ function openEditDialog(source: DataSource) {
       // ignore
     }
   }
+  // 回填 webhook 配置
+  const webhookConfig = source.webhook_config
+    ? (typeof source.webhook_config === 'string' ? JSON.parse(source.webhook_config) : source.webhook_config)
+    : getDefaultWebhookConfig()
+  webhookHeaders.value = webhookConfig.headers
+    ? Object.entries(webhookConfig.headers).map(([key, value]) => ({ key, value: value as string }))
+    : []
+
   form.value = {
     name: source.name || '',
     description: source.description || '',
     schema_fields: schemaFields,
     rate_limit: source.rate_limit || 0,
     rate_limit_burst: source.rate_limit_burst || 0,
+    webhook_enabled: !!source.webhook_enabled,
+    webhook_config: { ...getDefaultWebhookConfig(), ...webhookConfig },
   }
   dialogVisible.value = true
 }
@@ -183,12 +283,25 @@ async function saveSource() {
   if (!form.value.name.trim()) return
   saving.value = true
   const schemaConfig = { fields: form.value.schema_fields.filter((f) => f.name.trim() !== '') }
+  // 将 headers 数组转换为对象
+  const headersObj: Record<string, string> = {}
+  for (const h of webhookHeaders.value) {
+    if (h.key.trim()) {
+      headersObj[h.key.trim()] = h.value
+    }
+  }
+  const webhookConfig = form.value.webhook_enabled
+    ? { ...form.value.webhook_config, headers: headersObj }
+    : null
+
   const data = {
     name: form.value.name.trim(),
     description: form.value.description.trim(),
     schema_config: schemaConfig,
     rate_limit: form.value.rate_limit || 0,
     rate_limit_burst: form.value.rate_limit_burst || 0,
+    webhook_enabled: form.value.webhook_enabled,
+    webhook_config: webhookConfig,
   }
   try {
     if (isEditing.value && editingId.value) {

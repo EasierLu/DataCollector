@@ -86,7 +86,7 @@ func (h *CollectorHandler) CollectData(c *gin.Context) {
 	}
 
 	// 10. 调用 processor.ProcessRecord 持久化
-	_, err = h.processor.ProcessRecord(ctx, record)
+	_, err = h.processor.ProcessRecord(ctx, source, record)
 	if err != nil {
 		model.SendError(c, http.StatusInternalServerError, model.CodeInternalError, "failed to save record")
 		return
@@ -174,7 +174,7 @@ func (h *CollectorHandler) CollectBatchData(c *gin.Context) {
 	}
 
 	// 9. 批量处理记录
-	succeeded, failed, _, err := h.processor.ProcessBatch(ctx, records)
+	succeeded, failed, _, err := h.processor.ProcessBatch(ctx, source, records)
 	if err != nil && succeeded == 0 {
 		model.SendError(c, http.StatusInternalServerError, model.CodeInternalError, "failed to process batch")
 		return

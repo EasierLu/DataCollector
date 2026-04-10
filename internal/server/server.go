@@ -1,7 +1,6 @@
 package server
 
 import (
-	"context"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -21,13 +20,13 @@ import (
 
 // Server HTTP Server 封装
 type Server struct {
-	engine     *gin.Engine
-	config     *config.Config
-	store      storage.DataStore
-	jwtManager *auth.JWTManager
-	processor  *collector.Processor
-	hub        *monitor.WebSocketHub
-	logger     *slog.Logger
+	engine      *gin.Engine
+	config      *config.Config
+	store       storage.DataStore
+	jwtManager  *auth.JWTManager
+	processor   *collector.Processor
+	hub         *monitor.WebSocketHub
+	logger      *slog.Logger
 	rateLimiter *middleware.RateLimiter
 }
 
@@ -52,7 +51,7 @@ func NewServer(
 }
 
 // Setup 配置 Gin Engine，注册全局中间件和路由
-func (s *Server) Setup() {
+func (s *Server) Setup(configPath string, restartChan chan<- struct{}) {
 	// 设置 gin mode (debug/release)
 	gin.SetMode(s.config.Server.Mode)
 
@@ -66,15 +65,8 @@ func (s *Server) Setup() {
 	s.engine.Use(middleware.BodySizeLimitMiddleware(s.config.Collector.MaxBodySize))
 	s.engine.Use(middleware.MaxBytesErrorHandler())
 
-	// 初始化状态检查中间件
-	initChecker := func() bool {
-		val, err := s.store.GetConfig(context.Background(), "initialized")
-		return err == nil && val == "true"
-	}
-	s.engine.Use(auth.SetupCheckMiddleware(initChecker))
-
-	// 注册 API 路由
-	api.RegisterRoutes(s.engine, s.store, s.config, s.jwtManager, s.processor, s.rateLimiter)
+	// 注册 API 路由（已初始化模式，无需 SetupCheckMiddleware）
+	api.RegisterRoutes(s.engine, s.store, s.config, configPath, s.jwtManager, s.processor, s.rateLimiter, restartChan)
 
 	// 注册 WebSocket 路由（需要 JWT 认证）
 	s.engine.GET("/api/v1/admin/ws/monitor",
@@ -83,7 +75,7 @@ func (s *Server) Setup() {
 	)
 
 	// 注册 SPA 静态资源和 fallback 路由
-	s.serveSPA()
+	ServeSPA(s.engine, s.logger)
 }
 
 // Engine 返回 gin.Engine 供 http.Server 使用
@@ -91,26 +83,26 @@ func (s *Server) Engine() *gin.Engine {
 	return s.engine
 }
 
-// serveSPA 提供 Vue SPA 静态资源服务，并处理前端路由 fallback
-func (s *Server) serveSPA() {
+// ServeSPA 提供 Vue SPA 静态资源服务，并处理前端路由 fallback
+func ServeSPA(engine *gin.Engine, logger *slog.Logger) {
 	// 从 embed.FS 中获取 dist 子目录
 	distFS, err := fs.Sub(web.DistFS, "dist")
 	if err != nil {
-		s.logger.Error("failed to get dist sub filesystem", "error", err)
+		logger.Error("failed to get dist sub filesystem", "error", err)
 		return
 	}
 
 	// 读取 index.html 内容用于 SPA fallback
 	indexHTML, err := fs.ReadFile(distFS, "index.html")
 	if err != nil {
-		s.logger.Error("failed to read index.html", "error", err)
+		logger.Error("failed to read index.html", "error", err)
 		return
 	}
 
 	fileServer := http.FileServer(http.FS(distFS))
 
 	// 使用 NoRoute 处理所有未匹配的路由
-	s.engine.NoRoute(func(c *gin.Context) {
+	engine.NoRoute(func(c *gin.Context) {
 		path := c.Request.URL.Path
 
 		// API 路由返回 404 JSON

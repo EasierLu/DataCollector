@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/datacollector/datacollector/internal/auth"
@@ -19,17 +18,21 @@ import (
 
 // SetupHandler 系统初始化处理器
 type SetupHandler struct {
-	store      storage.DataStore
-	config     *config.Config
-	jwtManager *auth.JWTManager
+	store       storage.DataStore // 已初始化模式下非 nil，未初始化模式下为 nil
+	config      *config.Config
+	configPath  string // 配置文件路径，用于回写
+	jwtManager  *auth.JWTManager
+	restartChan chan<- struct{} // 重启信号 channel
 }
 
 // NewSetupHandler 创建新的初始化处理器
-func NewSetupHandler(store storage.DataStore, cfg *config.Config, jwtManager *auth.JWTManager) *SetupHandler {
+func NewSetupHandler(store storage.DataStore, cfg *config.Config, configPath string, jwtManager *auth.JWTManager, restartChan chan<- struct{}) *SetupHandler {
 	return &SetupHandler{
-		store:      store,
-		config:     cfg,
-		jwtManager: jwtManager,
+		store:       store,
+		config:      cfg,
+		configPath:  configPath,
+		jwtManager:  jwtManager,
+		restartChan: restartChan,
 	}
 }
 
@@ -41,13 +44,7 @@ type CheckStatusResponse struct {
 // CheckStatus 检查系统初始化状态
 // GET /api/v1/setup/status
 func (h *SetupHandler) CheckStatus(c *gin.Context) {
-	initialized := false
-	value, err := h.store.GetConfig(c.Request.Context(), "initialized")
-	if err == nil && value == "true" {
-		initialized = true
-	}
-
-	model.SendSuccess(c, CheckStatusResponse{Initialized: initialized})
+	model.SendSuccess(c, CheckStatusResponse{Initialized: h.config.Initialized})
 }
 
 // TestDatabaseRequest 测试数据库连接请求
@@ -63,8 +60,7 @@ type TestDatabaseRequest struct {
 // TestDatabase 测试数据库连接
 // POST /api/v1/setup/test-db
 func (h *SetupHandler) TestDatabase(c *gin.Context) {
-	value, err := h.store.GetConfig(c.Request.Context(), "initialized")
-	if err == nil && value == "true" {
+	if h.config.Initialized {
 		model.SendError(c, http.StatusForbidden, model.CodeAlreadyInitialized, "")
 		return
 	}
@@ -156,13 +152,12 @@ func (h *SetupHandler) Initialize(c *gin.Context) {
 	}
 
 	// 1. 检查是否已初始化
-	value, err := h.store.GetConfig(c.Request.Context(), "initialized")
-	if err == nil && value == "true" {
+	if h.config.Initialized {
 		model.SendError(c, http.StatusBadRequest, model.CodeAlreadyInitialized, "")
 		return
 	}
 
-	// 2. 更新数据库配置
+	// 2. 更新配置中的数据库配置
 	h.config.Database.Driver = req.Database.Driver
 	if req.Database.Driver == "sqlite" {
 		h.config.Database.SQLite = req.Database.SQLite
@@ -173,23 +168,43 @@ func (h *SetupHandler) Initialize(c *gin.Context) {
 	// 3. 更新服务器配置
 	h.config.Server.Port = req.Server.Port
 
-	// 4. 加密管理员密码
+	// 4. 用新配置创建数据库存储
+	newStore, err := storage.NewDataStore(h.config)
+	if err != nil {
+		model.SendError(c, http.StatusInternalServerError, model.CodeInitFailed, "failed to create datastore: "+err.Error())
+		return
+	}
+	defer newStore.Close()
+
+	// 5. 执行数据库迁移建表
+	ctx := c.Request.Context()
+	if err := newStore.Init(ctx); err != nil {
+		model.SendError(c, http.StatusInternalServerError, model.CodeInitFailed, "failed to initialize database: "+err.Error())
+		return
+	}
+
+	// 6. 验证数据库连接
+	if err := newStore.Ping(ctx); err != nil {
+		model.SendError(c, http.StatusInternalServerError, model.CodeInitFailed, "failed to ping database: "+err.Error())
+		return
+	}
+
+	// 7. 加密管理员密码
 	passwordHash, err := auth.HashPassword(req.Admin.Password)
 	if err != nil {
 		model.SendError(c, http.StatusInternalServerError, model.CodeInitFailed, "failed to hash password: "+err.Error())
 		return
 	}
 
-	// 5. 创建管理员用户（如果已存在则更新密码）
-	existingUser, err := h.store.GetUserByUsername(c.Request.Context(), req.Admin.Username)
+	// 8. 创建管理员用户（如果已存在则更新密码）
+	existingUser, err := newStore.GetUserByUsername(ctx, req.Admin.Username)
 	if err != nil && !errors.Is(err, model.ErrNotFound) {
 		model.SendError(c, http.StatusInternalServerError, model.CodeInitFailed, "failed to check existing user: "+err.Error())
 		return
 	}
 	if existingUser != nil {
-		// 用户已存在，更新密码
 		existingUser.PasswordHash = passwordHash
-		if err := h.store.UpdateUser(c.Request.Context(), existingUser); err != nil {
+		if err := newStore.UpdateUser(ctx, existingUser); err != nil {
 			model.SendError(c, http.StatusInternalServerError, model.CodeInitFailed, "failed to update admin user: "+err.Error())
 			return
 		}
@@ -200,29 +215,27 @@ func (h *SetupHandler) Initialize(c *gin.Context) {
 			Role:         "admin",
 			Status:       1,
 		}
-		_, err = h.store.CreateUser(c.Request.Context(), adminUser)
+		_, err = newStore.CreateUser(ctx, adminUser)
 		if err != nil {
 			model.SendError(c, http.StatusInternalServerError, model.CodeInitFailed, "failed to create admin user: "+err.Error())
 			return
 		}
 	}
 
-	// 6. 设置系统配置
-	ctx := c.Request.Context()
-	if err := h.store.SetConfig(ctx, "initialized", "true"); err != nil {
-		model.SendError(c, http.StatusInternalServerError, model.CodeInitFailed, "failed to set initialized config: "+err.Error())
-		return
-	}
-	if err := h.store.SetConfig(ctx, "db_driver", req.Database.Driver); err != nil {
-		model.SendError(c, http.StatusInternalServerError, model.CodeInitFailed, "failed to set db_driver config: "+err.Error())
-		return
-	}
-	if err := h.store.SetConfig(ctx, "server_port", strconv.Itoa(req.Server.Port)); err != nil {
-		model.SendError(c, http.StatusInternalServerError, model.CodeInitFailed, "failed to set server_port config: "+err.Error())
+	// 9. 设置 initialized 并写回配置文件
+	h.config.Initialized = true
+	if err := h.config.Save(h.configPath); err != nil {
+		model.SendError(c, http.StatusInternalServerError, model.CodeInitFailed, "failed to save config: "+err.Error())
 		return
 	}
 
-	model.SendSuccess(c, gin.H{"message": "initialization successful"})
+	model.SendSuccess(c, gin.H{"message": "initialization successful, server is restarting..."})
+
+	// 响应发送后触发重启
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		h.restartChan <- struct{}{}
+	}()
 }
 
 // ReinitializeRequest 重新初始化请求
@@ -259,6 +272,18 @@ func (h *SetupHandler) Reinitialize(c *gin.Context) {
 		return
 	}
 
-	model.SendSuccess(c, gin.H{"message": "system reinitialized, please restart the server"})
-}
+	// 将 initialized 设为 false 并写回配置文件
+	h.config.Initialized = false
+	if err := h.config.Save(h.configPath); err != nil {
+		model.SendError(c, http.StatusInternalServerError, model.CodeInitFailed, "failed to save config: "+err.Error())
+		return
+	}
 
+	model.SendSuccess(c, gin.H{"message": "system reinitialized, server is restarting..."})
+
+	// 响应发送后触发重启
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		h.restartChan <- struct{}{}
+	}()
+}

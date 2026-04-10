@@ -12,15 +12,40 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// RegisterSetupRoutes 注册初始化模式下的最小路由集（不连接数据库）
+func RegisterSetupRoutes(
+	r *gin.Engine,
+	cfg *config.Config,
+	configPath string,
+	restartChan chan<- struct{},
+) {
+	setupHandler := NewSetupHandler(nil, cfg, configPath, nil, restartChan)
+	healthHandler := NewHealthHandler(nil, "1.0.0")
+
+	apiV1 := r.Group("/api/v1")
+	{
+		apiV1.GET("/health", healthHandler.HealthCheck)
+
+		setup := apiV1.Group("/setup")
+		{
+			setup.GET("/status", setupHandler.CheckStatus)
+			setup.POST("/test-db", setupHandler.TestDatabase)
+			setup.POST("/init", setupHandler.Initialize)
+		}
+	}
+}
+
 // RegisterRoutes 注册所有 API 路由
 // 这个函数由 server 包调用，在这里集中注册所有路由
 func RegisterRoutes(
 	r *gin.Engine,
 	store storage.DataStore,
 	cfg *config.Config,
+	configPath string,
 	jwtManager *auth.JWTManager,
 	processor *collector.Processor,
 	rateLimiter *middleware.RateLimiter,
+	restartChan chan<- struct{},
 ) {
 	// 创建处理器实例
 	authHandler := NewAuthHandler(store, jwtManager)
@@ -30,7 +55,7 @@ func RegisterRoutes(
 	dataHandler := NewDataHandler(store)
 	exportHandler := NewExportHandler(store)
 	healthHandler := NewHealthHandler(store, "1.0.0")
-	setupHandler := NewSetupHandler(store, cfg, jwtManager)
+	setupHandler := NewSetupHandler(store, cfg, configPath, jwtManager, restartChan)
 	collectorHandler := NewCollectorHandler(store, processor, rateLimiter)
 	settingsHandler := NewSettingsHandler(store)
 	queryHandler := NewQueryHandler(store)

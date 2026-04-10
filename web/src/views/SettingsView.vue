@@ -239,10 +239,7 @@
 
     <!-- 重新初始化成功弹窗 -->
     <el-dialog v-model="reinitSuccessVisible" title="重新初始化成功" width="400px" :close-on-click-modal="false" :show-close="false">
-      <el-result icon="success" title="系统已重新初始化" sub-title="请重启服务器后访问初始化页面重新配置。" />
-      <template #footer>
-        <el-button type="primary" style="width: 100%" @click="handleLogout">返回登录页</el-button>
-      </template>
+      <el-result icon="success" title="系统已重新初始化" :sub-title="reinitRestarting ? '服务正在重启，请稍候...' : '服务已重启，即将跳转到初始化页面'" />
     </el-dialog>
   </div>
 </template>
@@ -250,19 +247,18 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { healthCheck } from '@/api/health'
-import { reinitialize } from '@/api/setup'
+import { reinitialize, checkSetupStatus } from '@/api/setup'
 import { changePassword } from '@/api/auth'
 import { getRateLimitSettings, updateRateLimitSettings } from '@/api/settings'
 import type { RateLimitSettings } from '@/api/settings'
 import { listApiKeys, createApiKey, listPermissions, updateApiKeyPermissions, deleteApiKey } from '@/api/apikey'
 import type { ApiKey } from '@/api/apikey'
 import { copyToClipboard } from '@/utils/clipboard'
-import { useAuthStore } from '@/stores/auth'
+
 import type { HealthResponse } from '@/api/health'
 import type { FormInstance, FormRules } from 'element-plus'
 import { ElMessage } from 'element-plus'
 
-const authStore = useAuthStore()
 
 const activeTab = ref('info')
 const loading = ref(true)
@@ -318,6 +314,7 @@ const reinitConfirmText = ref('')
 const reinitError = ref('')
 const reinitializing = ref(false)
 const reinitSuccessVisible = ref(false)
+const reinitRestarting = ref(false)
 
 // 修改密码
 const pwdFormRef = ref<FormInstance>()
@@ -515,6 +512,12 @@ async function confirmReinit() {
     await reinitialize(reinitConfirmText.value)
     reinitVisible.value = false
     reinitSuccessVisible.value = true
+    reinitRestarting.value = true
+    // 等待服务重启后跳转到初始化页面
+    await waitForServerRestart()
+    reinitRestarting.value = false
+    await new Promise(r => setTimeout(r, 1000))
+    window.location.href = '/setup'
   } catch (err: any) {
     reinitError.value = err.message || '重新初始化失败'
   } finally {
@@ -522,8 +525,17 @@ async function confirmReinit() {
   }
 }
 
-function handleLogout() {
-  authStore.logout()
+async function waitForServerRestart() {
+  await new Promise(r => setTimeout(r, 1500))
+  for (let i = 0; i < 30; i++) {
+    try {
+      const status = await checkSetupStatus()
+      if (!status.initialized) return
+    } catch {
+      // 服务还没恢复
+    }
+    await new Promise(r => setTimeout(r, 1000))
+  }
 }
 
 onMounted(() => {

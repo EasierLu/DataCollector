@@ -96,7 +96,7 @@
           <el-descriptions-item label="管理员用户名">{{ adminUsername }}</el-descriptions-item>
         </el-descriptions>
 
-        <el-alert v-if="initSuccess" title="初始化成功！3秒后跳转到登录页面..." type="success" show-icon :closable="false" style="margin-top: 16px" />
+        <el-alert v-if="initSuccess" title="初始化成功！服务正在重启，请稍候..." type="success" show-icon :closable="false" style="margin-top: 16px" />
         <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" style="margin-top: 16px" />
 
         <div class="step-actions">
@@ -111,13 +111,25 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { testDatabase, initialize } from '@/api/setup'
+import { checkSetupStatus, testDatabase, initialize } from '@/api/setup'
 
 const router = useRouter()
 
 const step = ref(1)
+
+// 已初始化则重定向到登录页
+onMounted(async () => {
+  try {
+    const status = await checkSetupStatus()
+    if (status.initialized) {
+      router.replace('/login')
+    }
+  } catch {
+    // 服务不可用，继续显示 setup 页面
+  }
+})
 const dbDriver = ref('sqlite')
 const sqlitePath = ref('./data/datacollector.db')
 const pgHost = ref('localhost')
@@ -196,11 +208,29 @@ async function handleInitialize() {
       },
     })
     initSuccess.value = true
-    setTimeout(() => router.push('/login'), 3000)
+    // 等待服务重启后跳转到登录页
+    await waitForServerRestart(true)
+    router.push('/login')
   } catch (err: any) {
     error.value = err.message || '初始化失败'
   } finally {
     initializing.value = false
+  }
+}
+
+// 等待服务重启完成
+async function waitForServerRestart(expectInitialized: boolean) {
+  // 等待服务开始关闭
+  await new Promise(r => setTimeout(r, 1500))
+  // 轮询直到服务恢复
+  for (let i = 0; i < 30; i++) {
+    try {
+      const status = await checkSetupStatus()
+      if (status.initialized === expectInitialized) return
+    } catch {
+      // 服务还没恢复
+    }
+    await new Promise(r => setTimeout(r, 1000))
   }
 }
 </script>

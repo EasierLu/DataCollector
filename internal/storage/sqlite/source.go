@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"time"
 
 	"github.com/datacollector/datacollector/internal/model"
@@ -14,10 +15,20 @@ func (s *SQLiteStore) CreateSource(ctx context.Context, source *model.DataSource
 	defer s.mu.Unlock()
 
 	query := `
-		INSERT INTO data_sources (collect_id, name, description, schema_config, status, created_by, rate_limit, rate_limit_burst, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO data_sources (collect_id, name, description, schema_config, status, created_by, rate_limit, rate_limit_burst, webhook_enabled, webhook_config, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	now := time.Now()
+
+	var webhookConfigJSON interface{}
+	if source.WebhookConfig != nil {
+		data, err := json.Marshal(source.WebhookConfig)
+		if err != nil {
+			return 0, err
+		}
+		webhookConfigJSON = string(data)
+	}
+
 	result, err := s.db.ExecContext(ctx, query,
 		source.CollectID,
 		source.Name,
@@ -27,6 +38,8 @@ func (s *SQLiteStore) CreateSource(ctx context.Context, source *model.DataSource
 		source.CreatedBy,
 		source.RateLimit,
 		source.RateLimitBurst,
+		source.WebhookEnabled,
+		webhookConfigJSON,
 		now,
 		now,
 	)
@@ -40,13 +53,14 @@ func (s *SQLiteStore) CreateSource(ctx context.Context, source *model.DataSource
 // GetSourceByID 根据 ID 获取数据源
 func (s *SQLiteStore) GetSourceByID(ctx context.Context, id int64) (*model.DataSource, error) {
 	query := `
-		SELECT id, collect_id, name, description, schema_config, status, created_by, created_at, updated_at, rate_limit, rate_limit_burst
+		SELECT id, collect_id, name, description, schema_config, status, created_by, created_at, updated_at, rate_limit, rate_limit_burst, webhook_enabled, webhook_config
 		FROM data_sources
 		WHERE id = ? AND status = 1
 	`
 	row := s.db.QueryRowContext(ctx, query, id)
 
 	var source model.DataSource
+	var webhookConfigStr sql.NullString
 	err := row.Scan(
 		&source.ID,
 		&source.CollectID,
@@ -59,12 +73,22 @@ func (s *SQLiteStore) GetSourceByID(ctx context.Context, id int64) (*model.DataS
 		&source.UpdatedAt,
 		&source.RateLimit,
 		&source.RateLimitBurst,
+		&source.WebhookEnabled,
+		&webhookConfigStr,
 	)
 	if err == sql.ErrNoRows {
 		return nil, model.ErrNotFound
 	}
 	if err != nil {
 		return nil, err
+	}
+
+	if webhookConfigStr.Valid {
+		var cfg model.WebhookConfig
+		if err := json.Unmarshal([]byte(webhookConfigStr.String), &cfg); err != nil {
+			return nil, err
+		}
+		source.WebhookConfig = &cfg
 	}
 
 	return &source, nil
@@ -73,13 +97,14 @@ func (s *SQLiteStore) GetSourceByID(ctx context.Context, id int64) (*model.DataS
 // GetSourceByCollectID 根据 CollectID 获取数据源
 func (s *SQLiteStore) GetSourceByCollectID(ctx context.Context, collectID string) (*model.DataSource, error) {
 	query := `
-		SELECT id, collect_id, name, description, schema_config, status, created_by, created_at, updated_at, rate_limit, rate_limit_burst
+		SELECT id, collect_id, name, description, schema_config, status, created_by, created_at, updated_at, rate_limit, rate_limit_burst, webhook_enabled, webhook_config
 		FROM data_sources
 		WHERE collect_id = ? AND status = 1
 	`
 	row := s.db.QueryRowContext(ctx, query, collectID)
 
 	var source model.DataSource
+	var webhookConfigStr sql.NullString
 	err := row.Scan(
 		&source.ID,
 		&source.CollectID,
@@ -92,12 +117,22 @@ func (s *SQLiteStore) GetSourceByCollectID(ctx context.Context, collectID string
 		&source.UpdatedAt,
 		&source.RateLimit,
 		&source.RateLimitBurst,
+		&source.WebhookEnabled,
+		&webhookConfigStr,
 	)
 	if err == sql.ErrNoRows {
 		return nil, model.ErrNotFound
 	}
 	if err != nil {
 		return nil, err
+	}
+
+	if webhookConfigStr.Valid {
+		var cfg model.WebhookConfig
+		if err := json.Unmarshal([]byte(webhookConfigStr.String), &cfg); err != nil {
+			return nil, err
+		}
+		source.WebhookConfig = &cfg
 	}
 
 	return &source, nil
@@ -123,7 +158,7 @@ func (s *SQLiteStore) ListSources(ctx context.Context, page, size int) (*model.P
 	// 查询列表（包含 token_count）
 	query := `
 		SELECT s.id, s.collect_id, s.name, s.description, s.schema_config, s.status, s.created_by, 
-		       s.created_at, s.updated_at, s.rate_limit, s.rate_limit_burst, COUNT(t.id) as token_count
+		       s.created_at, s.updated_at, s.rate_limit, s.rate_limit_burst, s.webhook_enabled, s.webhook_config, COUNT(t.id) as token_count
 		FROM data_sources s
 		LEFT JOIN data_tokens t ON s.id = t.source_id AND t.status = 1
 		WHERE s.status = 1
@@ -141,6 +176,7 @@ func (s *SQLiteStore) ListSources(ctx context.Context, page, size int) (*model.P
 	var sources []*model.DataSource
 	for rows.Next() {
 		var source model.DataSource
+		var webhookConfigStr sql.NullString
 		err := rows.Scan(
 			&source.ID,
 			&source.CollectID,
@@ -153,10 +189,19 @@ func (s *SQLiteStore) ListSources(ctx context.Context, page, size int) (*model.P
 			&source.UpdatedAt,
 			&source.RateLimit,
 			&source.RateLimitBurst,
+			&source.WebhookEnabled,
+			&webhookConfigStr,
 			&source.TokenCount,
 		)
 		if err != nil {
 			return nil, err
+		}
+		if webhookConfigStr.Valid {
+			var cfg model.WebhookConfig
+			if err := json.Unmarshal([]byte(webhookConfigStr.String), &cfg); err != nil {
+				return nil, err
+			}
+			source.WebhookConfig = &cfg
 		}
 		sources = append(sources, &source)
 	}
@@ -176,9 +221,18 @@ func (s *SQLiteStore) UpdateSource(ctx context.Context, source *model.DataSource
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	var webhookConfigJSON interface{}
+	if source.WebhookConfig != nil {
+		data, err := json.Marshal(source.WebhookConfig)
+		if err != nil {
+			return err
+		}
+		webhookConfigJSON = string(data)
+	}
+
 	query := `
 		UPDATE data_sources
-		SET name = ?, description = ?, schema_config = ?, status = ?, rate_limit = ?, rate_limit_burst = ?, updated_at = ?
+		SET name = ?, description = ?, schema_config = ?, status = ?, rate_limit = ?, rate_limit_burst = ?, webhook_enabled = ?, webhook_config = ?, updated_at = ?
 		WHERE id = ?
 	`
 	_, err := s.db.ExecContext(ctx, query,
@@ -188,6 +242,8 @@ func (s *SQLiteStore) UpdateSource(ctx context.Context, source *model.DataSource
 		source.Status,
 		source.RateLimit,
 		source.RateLimitBurst,
+		source.WebhookEnabled,
+		webhookConfigJSON,
 		time.Now(),
 		source.ID,
 	)

@@ -36,6 +36,17 @@ type HealthResponse struct {
 // HealthCheck 健康检查
 // GET /api/v1/health
 func (h *HealthHandler) HealthCheck(c *gin.Context) {
+	// 如果没有数据库连接（未初始化模式），返回基本状态
+	if h.store == nil {
+		model.SendSuccess(c, HealthResponse{
+			Status:   "setup",
+			Version:  h.version,
+			Uptime:   time.Since(h.startTime).String(),
+			Database: "not configured",
+		})
+		return
+	}
+
 	// Ping 数据库检查连接
 	err := h.store.Ping(c.Request.Context())
 

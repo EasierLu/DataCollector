@@ -1,3 +1,6 @@
+# 此文件仅作为开发参考模板，运行时配置文件由程序自动生成到当前工作目录的 config.yaml
+initialized: false
+
 server:
   host: "0.0.0.0"
   port: 8080

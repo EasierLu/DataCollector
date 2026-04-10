@@ -7,6 +7,18 @@ import (
 	"time"
 )
 
+// WebhookConfig Webhook回调配置
+type WebhookConfig struct {
+	URL           string            `json:"url"`
+	Method        string            `json:"method"`
+	Headers       map[string]string `json:"headers"`
+	Secret        string            `json:"secret"`
+	Timeout       int               `json:"timeout"`
+	RetryCount    int               `json:"retry_count"`
+	RetryInterval int               `json:"retry_interval"`
+	BodyTemplate  string            `json:"body_template"`
+}
+
 // DataSource 数据源模型
 type DataSource struct {
 	ID             int64           `json:"id"`
@@ -21,6 +33,8 @@ type DataSource struct {
 	TokenCount     int             `json:"token_count,omitempty"` // 关联的 Token 数量（查询时填充）
 	RateLimit      int             `json:"rate_limit"`            // 每分钟请求数，0=使用全局默认
 	RateLimitBurst int             `json:"rate_limit_burst"`      // 突发量上限，0=使用全局默认
+	WebhookEnabled bool            `json:"webhook_enabled"`
+	WebhookConfig  *WebhookConfig  `json:"webhook_config,omitempty"`
 }
 
 // GenerateCollectID 生成短随机标识符，用于采集 API 路由

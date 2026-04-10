@@ -11,12 +11,13 @@ import (
 
 // Config 应用配置结构体
 type Config struct {
-	Server    ServerConfig    `yaml:"server"`
-	TLS       TLSConfig       `yaml:"tls"`
-	Database  DatabaseConfig  `yaml:"database"`
-	JWT       JWTConfig       `yaml:"jwt"`
-	Collector CollectorConfig `yaml:"collector"`
-	Log       LogConfig       `yaml:"log"`
+	Initialized bool            `yaml:"initialized"`
+	Server      ServerConfig    `yaml:"server"`
+	TLS         TLSConfig       `yaml:"tls"`
+	Database    DatabaseConfig  `yaml:"database"`
+	JWT         JWTConfig       `yaml:"jwt"`
+	Collector   CollectorConfig `yaml:"collector"`
+	Log         LogConfig       `yaml:"log"`
 }
 
 // ServerConfig 服务器配置
@@ -63,10 +64,10 @@ type JWTConfig struct {
 
 // CollectorConfig 数据采集配置
 type CollectorConfig struct {
-	MaxBodySize        int64    `yaml:"max_body_size"`
-	RateLimitPerToken  int      `yaml:"rate_limit_per_token"`
-	RateLimitPerIP     int      `yaml:"rate_limit_per_ip"`
-	AllowedOrigins     []string `yaml:"allowed_origins"`
+	MaxBodySize       int64    `yaml:"max_body_size"`
+	RateLimitPerToken int      `yaml:"rate_limit_per_token"`
+	RateLimitPerIP    int      `yaml:"rate_limit_per_ip"`
+	AllowedOrigins    []string `yaml:"allowed_origins"`
 }
 
 // LogConfig 日志配置
@@ -80,9 +81,13 @@ type LogConfig struct {
 }
 
 // Load 从YAML文件加载配置
+// 如果文件不存在返回 nil, nil（区分"文件不存在"和"解析失败"）
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
 
@@ -97,9 +102,19 @@ func Load(path string) (*Config, error) {
 	return &cfg, nil
 }
 
+// Save 将当前配置序列化写回 YAML 文件
+func (c *Config) Save(path string) error {
+	data, err := yaml.Marshal(c)
+	if err != nil {
+		return fmt.Errorf("failed to marshal config: %w", err)
+	}
+	return os.WriteFile(path, data, 0644)
+}
+
 // DefaultConfig 返回默认配置
 func DefaultConfig() *Config {
 	return &Config{
+		Initialized: false,
 		Server: ServerConfig{
 			Host: "0.0.0.0",
 			Port: 8080,

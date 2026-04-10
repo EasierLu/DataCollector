@@ -24,20 +24,24 @@ func NewSourceHandler(store storage.DataStore) *SourceHandler {
 
 // CreateSourceRequest 创建数据源请求
 type CreateSourceRequest struct {
-	Name           string          `json:"name" binding:"required"`
-	Description    string          `json:"description"`
-	SchemaConfig   json.RawMessage `json:"schema_config"`
-	RateLimit      int             `json:"rate_limit"`
-	RateLimitBurst int             `json:"rate_limit_burst"`
+	Name           string               `json:"name" binding:"required"`
+	Description    string               `json:"description"`
+	SchemaConfig   json.RawMessage      `json:"schema_config"`
+	RateLimit      int                  `json:"rate_limit"`
+	RateLimitBurst int                  `json:"rate_limit_burst"`
+	WebhookEnabled *bool                `json:"webhook_enabled"`
+	WebhookConfig  *model.WebhookConfig `json:"webhook_config"`
 }
 
 // UpdateSourceRequest 更新数据源请求
 type UpdateSourceRequest struct {
-	Name           string          `json:"name" binding:"required"`
-	Description    string          `json:"description"`
-	SchemaConfig   json.RawMessage `json:"schema_config"`
-	RateLimit      int             `json:"rate_limit"`
-	RateLimitBurst int             `json:"rate_limit_burst"`
+	Name           string               `json:"name" binding:"required"`
+	Description    string               `json:"description"`
+	SchemaConfig   json.RawMessage      `json:"schema_config"`
+	RateLimit      int                  `json:"rate_limit"`
+	RateLimitBurst int                  `json:"rate_limit_burst"`
+	WebhookEnabled *bool                `json:"webhook_enabled"`
+	WebhookConfig  *model.WebhookConfig `json:"webhook_config"`
 }
 
 // GetSource 获取单个数据源
@@ -113,6 +117,10 @@ func (h *SourceHandler) CreateSource(c *gin.Context) {
 		CreatedBy:      userID.(int64),
 		RateLimit:      req.RateLimit,
 		RateLimitBurst: req.RateLimitBurst,
+		WebhookConfig:  req.WebhookConfig,
+	}
+	if req.WebhookEnabled != nil {
+		source.WebhookEnabled = *req.WebhookEnabled
 	}
 
 	id, err := h.store.CreateSource(c.Request.Context(), source)
@@ -161,6 +169,10 @@ func (h *SourceHandler) UpdateSource(c *gin.Context) {
 	existing.SchemaConfig = schemaConfig
 	existing.RateLimit = req.RateLimit
 	existing.RateLimitBurst = req.RateLimitBurst
+	existing.WebhookConfig = req.WebhookConfig
+	if req.WebhookEnabled != nil {
+		existing.WebhookEnabled = *req.WebhookEnabled
+	}
 
 	if err := h.store.UpdateSource(c.Request.Context(), existing); err != nil {
 		model.SendError(c, http.StatusInternalServerError, model.CodeSourceUpdateFailed, err.Error())

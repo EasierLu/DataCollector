@@ -37,7 +37,6 @@ RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 WORKDIR /app
 
 COPY --from=builder /app/datacollector .
-COPY --from=builder /app/configs/config.yaml ./configs/
 
 # 创建数据和日志目录
 RUN mkdir -p /app/data /app/logs && chown -R appuser:appgroup /app/data /app/logs

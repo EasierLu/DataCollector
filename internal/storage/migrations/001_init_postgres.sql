@@ -22,6 +22,8 @@ CREATE TABLE IF NOT EXISTS data_sources (
     status INTEGER DEFAULT 1 NOT NULL,
     rate_limit INTEGER DEFAULT 0 NOT NULL,
     rate_limit_burst INTEGER DEFAULT 0 NOT NULL,
+    webhook_enabled INTEGER DEFAULT 0 NOT NULL,
+    webhook_config JSONB,
     created_by INTEGER NOT NULL REFERENCES users(id),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()

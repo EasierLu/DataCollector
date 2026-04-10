@@ -20,6 +20,7 @@ dist/
 # =========================
 data/
 logs/
+config.yaml
 
 # =========================
 # Node.js / Frontend (web/)

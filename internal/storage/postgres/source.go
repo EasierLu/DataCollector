@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"time"
 
 	"github.com/datacollector/datacollector/internal/model"
@@ -11,11 +12,21 @@ import (
 // CreateSource 创建数据源
 func (s *PostgresStore) CreateSource(ctx context.Context, source *model.DataSource) (int64, error) {
 	query := `
-		INSERT INTO data_sources (collect_id, name, description, schema_config, status, created_by, rate_limit, rate_limit_burst, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		INSERT INTO data_sources (collect_id, name, description, schema_config, status, created_by, rate_limit, rate_limit_burst, webhook_enabled, webhook_config, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 		RETURNING id
 	`
 	now := time.Now()
+
+	var webhookConfigJSON interface{}
+	if source.WebhookConfig != nil {
+		data, err := json.Marshal(source.WebhookConfig)
+		if err != nil {
+			return 0, err
+		}
+		webhookConfigJSON = data
+	}
+
 	var id int64
 	err := s.db.QueryRowContext(ctx, query,
 		source.CollectID,
@@ -26,6 +37,8 @@ func (s *PostgresStore) CreateSource(ctx context.Context, source *model.DataSour
 		source.CreatedBy,
 		source.RateLimit,
 		source.RateLimitBurst,
+		source.WebhookEnabled,
+		webhookConfigJSON,
 		now,
 		now,
 	).Scan(&id)
@@ -39,13 +52,14 @@ func (s *PostgresStore) CreateSource(ctx context.Context, source *model.DataSour
 // GetSourceByID 根据 ID 获取数据源
 func (s *PostgresStore) GetSourceByID(ctx context.Context, id int64) (*model.DataSource, error) {
 	query := `
-		SELECT id, collect_id, name, description, schema_config, status, created_by, created_at, updated_at, rate_limit, rate_limit_burst
+		SELECT id, collect_id, name, description, schema_config, status, created_by, created_at, updated_at, rate_limit, rate_limit_burst, webhook_enabled, webhook_config
 		FROM data_sources
 		WHERE id = $1 AND status = 1
 	`
 	row := s.db.QueryRowContext(ctx, query, id)
 
 	var source model.DataSource
+	var webhookConfigBytes []byte
 	err := row.Scan(
 		&source.ID,
 		&source.CollectID,
@@ -58,12 +72,22 @@ func (s *PostgresStore) GetSourceByID(ctx context.Context, id int64) (*model.Dat
 		&source.UpdatedAt,
 		&source.RateLimit,
 		&source.RateLimitBurst,
+		&source.WebhookEnabled,
+		&webhookConfigBytes,
 	)
 	if err == sql.ErrNoRows {
 		return nil, model.ErrNotFound
 	}
 	if err != nil {
 		return nil, err
+	}
+
+	if webhookConfigBytes != nil {
+		var cfg model.WebhookConfig
+		if err := json.Unmarshal(webhookConfigBytes, &cfg); err != nil {
+			return nil, err
+		}
+		source.WebhookConfig = &cfg
 	}
 
 	return &source, nil
@@ -72,13 +96,14 @@ func (s *PostgresStore) GetSourceByID(ctx context.Context, id int64) (*model.Dat
 // GetSourceByCollectID 根据 CollectID 获取数据源
 func (s *PostgresStore) GetSourceByCollectID(ctx context.Context, collectID string) (*model.DataSource, error) {
 	query := `
-		SELECT id, collect_id, name, description, schema_config, status, created_by, created_at, updated_at, rate_limit, rate_limit_burst
+		SELECT id, collect_id, name, description, schema_config, status, created_by, created_at, updated_at, rate_limit, rate_limit_burst, webhook_enabled, webhook_config
 		FROM data_sources
 		WHERE collect_id = $1 AND status = 1
 	`
 	row := s.db.QueryRowContext(ctx, query, collectID)
 
 	var source model.DataSource
+	var webhookConfigBytes []byte
 	err := row.Scan(
 		&source.ID,
 		&source.CollectID,
@@ -91,12 +116,22 @@ func (s *PostgresStore) GetSourceByCollectID(ctx context.Context, collectID stri
 		&source.UpdatedAt,
 		&source.RateLimit,
 		&source.RateLimitBurst,
+		&source.WebhookEnabled,
+		&webhookConfigBytes,
 	)
 	if err == sql.ErrNoRows {
 		return nil, model.ErrNotFound
 	}
 	if err != nil {
 		return nil, err
+	}
+
+	if webhookConfigBytes != nil {
+		var cfg model.WebhookConfig
+		if err := json.Unmarshal(webhookConfigBytes, &cfg); err != nil {
+			return nil, err
+		}
+		source.WebhookConfig = &cfg
 	}
 
 	return &source, nil
@@ -122,7 +157,7 @@ func (s *PostgresStore) ListSources(ctx context.Context, page, size int) (*model
 	// 查询列表（包含 token_count）
 	query := `
 		SELECT s.id, s.collect_id, s.name, s.description, s.schema_config, s.status, s.created_by, 
-		       s.created_at, s.updated_at, s.rate_limit, s.rate_limit_burst, COUNT(t.id) as token_count
+		       s.created_at, s.updated_at, s.rate_limit, s.rate_limit_burst, s.webhook_enabled, s.webhook_config, COUNT(t.id) as token_count
 		FROM data_sources s
 		LEFT JOIN data_tokens t ON s.id = t.source_id AND t.status = 1
 		WHERE s.status = 1
@@ -140,6 +175,7 @@ func (s *PostgresStore) ListSources(ctx context.Context, page, size int) (*model
 	var sources []*model.DataSource
 	for rows.Next() {
 		var source model.DataSource
+		var webhookConfigBytes []byte
 		err := rows.Scan(
 			&source.ID,
 			&source.CollectID,
@@ -152,10 +188,19 @@ func (s *PostgresStore) ListSources(ctx context.Context, page, size int) (*model
 			&source.UpdatedAt,
 			&source.RateLimit,
 			&source.RateLimitBurst,
+			&source.WebhookEnabled,
+			&webhookConfigBytes,
 			&source.TokenCount,
 		)
 		if err != nil {
 			return nil, err
+		}
+		if webhookConfigBytes != nil {
+			var cfg model.WebhookConfig
+			if err := json.Unmarshal(webhookConfigBytes, &cfg); err != nil {
+				return nil, err
+			}
+			source.WebhookConfig = &cfg
 		}
 		sources = append(sources, &source)
 	}
@@ -172,10 +217,19 @@ func (s *PostgresStore) ListSources(ctx context.Context, page, size int) (*model
 
 // UpdateSource 更新数据源
 func (s *PostgresStore) UpdateSource(ctx context.Context, source *model.DataSource) error {
+	var webhookConfigJSON interface{}
+	if source.WebhookConfig != nil {
+		data, err := json.Marshal(source.WebhookConfig)
+		if err != nil {
+			return err
+		}
+		webhookConfigJSON = data
+	}
+
 	query := `
 		UPDATE data_sources
-		SET name = $1, description = $2, schema_config = $3, status = $4, rate_limit = $5, rate_limit_burst = $6, updated_at = $7
-		WHERE id = $8
+		SET name = $1, description = $2, schema_config = $3, status = $4, rate_limit = $5, rate_limit_burst = $6, webhook_enabled = $7, webhook_config = $8, updated_at = $9
+		WHERE id = $10
 	`
 	_, err := s.db.ExecContext(ctx, query,
 		source.Name,
@@ -184,6 +238,8 @@ func (s *PostgresStore) UpdateSource(ctx context.Context, source *model.DataSour
 		source.Status,
 		source.RateLimit,
 		source.RateLimitBurst,
+		source.WebhookEnabled,
+		webhookConfigJSON,
 		time.Now(),
 		source.ID,
 	)
