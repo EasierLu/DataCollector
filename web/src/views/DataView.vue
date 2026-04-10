@@ -92,16 +92,16 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { queryData, deleteRecord, batchDeleteRecords, exportData } from '@/api/data'
-import { listSources } from '@/api/source'
 import { formatDate, truncate, formatJSON, getDataSummary } from '@/utils/format'
 import { downloadBlob } from '@/utils/clipboard'
+import { useSourceOptions } from '@/composables/useSourceOptions'
 import type { DataRecord } from '@/types/record'
-import type { DataSource } from '@/types/source'
+
+const { sourceOptions, loadSourceOptions, getSourceName } = useSourceOptions()
 
 const loading = ref(true)
 const records = ref<DataRecord[]>([])
 const total = ref(0)
-const sourceOptions = ref<DataSource[]>([])
 const selectedIds = ref<number[]>([])
 const expandedIds = ref<Set<number>>(new Set())
 const exporting = ref(false)
@@ -139,20 +139,6 @@ function toggleExpand(id: number) {
   }
   // trigger reactivity
   expandedIds.value = new Set(expandedIds.value)
-}
-
-function getSourceName(sourceId: number): string {
-  const s = sourceOptions.value.find((src) => src.id === sourceId)
-  return s ? s.name : `ID: ${sourceId}`
-}
-
-async function loadSources() {
-  try {
-    const result = await listSources(1, 1000)
-    sourceOptions.value = result?.list || []
-  } catch {
-    // handled
-  }
 }
 
 async function loadRecords() {
@@ -238,7 +224,7 @@ async function handleExport(format: 'csv' | 'json') {
 }
 
 onMounted(async () => {
-  await loadSources()
+  await loadSourceOptions()
   await loadRecords()
 })
 </script>

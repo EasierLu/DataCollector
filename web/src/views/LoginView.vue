@@ -30,6 +30,7 @@ import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { User, Lock, Monitor } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
+import { isPasswordValid } from '@/utils/validation'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -38,7 +39,7 @@ const form = ref({ username: '', password: '' })
 const loading = ref(false)
 const error = ref('')
 
-const isValid = computed(() => form.value.username.trim() !== '' && form.value.password.length >= 6)
+const isValid = computed(() => form.value.username.trim() !== '' && isPasswordValid(form.value.password))
 
 async function handleLogin() {
   if (!isValid.value || loading.value) return

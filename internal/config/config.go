@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -191,11 +192,25 @@ func (c *Config) applyEnvOverrides() {
 		c.Database.Postgres.DBName = v
 	}
 
-	// 服务器端口
+	// 服务器配置
 	if v := os.Getenv("SERVER_PORT"); v != "" {
 		if port, err := strconv.Atoi(v); err == nil {
 			c.Server.Port = port
 		}
+	}
+	if v := os.Getenv("SERVER_MODE"); v != "" {
+		c.Server.Mode = v
+	}
+
+	// TLS 配置
+	if v := os.Getenv("TLS_ENABLED"); v != "" {
+		c.TLS.Enabled = v == "true" || v == "1"
+	}
+	if v := os.Getenv("TLS_CERT_FILE"); v != "" {
+		c.TLS.CertFile = v
+	}
+	if v := os.Getenv("TLS_KEY_FILE"); v != "" {
+		c.TLS.KeyFile = v
 	}
 
 	// JWT 密钥
@@ -203,9 +218,24 @@ func (c *Config) applyEnvOverrides() {
 		c.JWT.Secret = v
 	}
 
-	// 日志级别
+	// CORS 允许的源（逗号分隔）
+	if v := os.Getenv("CORS_ORIGINS"); v != "" {
+		origins := strings.Split(v, ",")
+		for i := range origins {
+			origins[i] = strings.TrimSpace(origins[i])
+		}
+		c.Collector.AllowedOrigins = origins
+	}
+
+	// 日志配置
 	if v := os.Getenv("LOG_LEVEL"); v != "" {
 		c.Log.Level = v
+	}
+	if v := os.Getenv("LOG_OUTPUT"); v != "" {
+		c.Log.Output = v
+	}
+	if v := os.Getenv("LOG_FILE_PATH"); v != "" {
+		c.Log.FilePath = v
 	}
 }
 

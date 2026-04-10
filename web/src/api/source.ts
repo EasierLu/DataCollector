@@ -3,7 +3,12 @@ import type { DataSource, CreateSourceRequest, UpdateSourceRequest } from '@/typ
 import type { PageResult } from '@/types/api'
 
 export function listSources(page: number, size: number): Promise<PageResult<DataSource>> {
-  return request.get('/api/v1/admin/sources', { params: { page, size } })
+  return request
+    .get('/api/v1/admin/sources', { params: { page, size } })
+    .then((data: any) => ({
+      total: data.total,
+      list: data.items ?? [],
+    }))
 }
 
 export function getSourceById(id: number): Promise<DataSource> {

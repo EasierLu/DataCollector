@@ -14,6 +14,28 @@ services:
       - DB_DRIVER=sqlite
       - DB_SQLITE_PATH=/app/data/datacollector.db
     restart: unless-stopped
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=64m
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 512M
+        reservations:
+          memory: 128M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/v1/setup/status"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   # 可选：PostgreSQL 模式（取消注释使用）
   # datacollector-pg:
@@ -34,6 +56,20 @@ services:
   #     postgres:
   #       condition: service_healthy
   #   restart: unless-stopped
+  #   cap_drop:
+  #     - ALL
+  #   cap_add:
+  #     - NET_BIND_SERVICE
+  #   security_opt:
+  #     - no-new-privileges:true
+  #   read_only: true
+  #   tmpfs:
+  #     - /tmp:noexec,nosuid,size=64m
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: "2.0"
+  #         memory: 512M
   #
   # postgres:
   #   image: postgres:15-alpine
@@ -50,6 +86,17 @@ services:
   #     timeout: 5s
   #     retries: 5
   #   restart: unless-stopped
+  #   cap_drop:
+  #     - ALL
+  #   cap_add:
+  #     - NET_BIND_SERVICE
+  #   security_opt:
+  #     - no-new-privileges:true
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: "2.0"
+  #         memory: 1G
 
 # volumes:
 #   postgres_data:

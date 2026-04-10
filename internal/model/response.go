@@ -69,3 +69,21 @@ func SendError(c *gin.Context, httpStatus int, code int, message string) {
 func SendValidationError(c *gin.Context, errors interface{}) {
 	c.JSON(http.StatusBadRequest, ErrorWithErrors(CodeValidationFailed, "", errors))
 }
+
+// PagedData 统一分页响应数据
+type PagedData struct {
+	Items interface{} `json:"items"`
+	Total int64       `json:"total"`
+	Page  int         `json:"page"`
+	Size  int         `json:"size"`
+}
+
+// SendPagedSuccess 发送分页成功响应
+func SendPagedSuccess(c *gin.Context, items interface{}, total int64, page, size int) {
+	c.JSON(http.StatusOK, Success(PagedData{
+		Items: items,
+		Total: total,
+		Page:  page,
+		Size:  size,
+	}))
+}

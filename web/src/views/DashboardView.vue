@@ -115,12 +115,11 @@ import { GridComponent, TooltipComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import VChart from 'vue-echarts'
 import { getDashboard, getDashboardTrend } from '@/api/dashboard'
-import { listSources } from '@/api/source'
 import { listTokens } from '@/api/token'
 import { useWebSocketStore } from '@/stores/websocket'
+import { useSourceOptions } from '@/composables/useSourceOptions'
 import { formatDate, getDataSummary } from '@/utils/format'
 import type { DataRecord } from '@/types/record'
-import type { DataSource } from '@/types/source'
 import type { DataToken } from '@/types/token'
 import type { TrendPoint } from '@/types/dashboard'
 
@@ -172,13 +171,8 @@ const timeRange = ref('7d')
 const customDateRange = ref<string[]>([])
 const trendSourceId = ref<number | undefined>(undefined)
 const trendTokenId = ref<number | undefined>(undefined)
-const sourceOptions = ref<DataSource[]>([])
+const { sourceOptions, loadSourceOptions, getSourceName } = useSourceOptions()
 const tokenOptions = ref<DataToken[]>([])
-
-function getSourceName(sourceId: number): string {
-  const source = sourceOptions.value.find(s => s.id === sourceId)
-  return source ? source.name : `#${sourceId}`
-}
 
 function getDateRange(): { start_date: string; end_date: string } | null {
   const today = new Date()
@@ -294,14 +288,6 @@ async function loadTrend() {
   }
 }
 
-async function loadSourceOptions() {
-  try {
-    const result = await listSources(1, 1000)
-    sourceOptions.value = result?.list || []
-  } catch {
-    sourceOptions.value = []
-  }
-}
 
 async function loadTokenOptions(sourceId: number) {
   try {

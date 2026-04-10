@@ -81,7 +81,7 @@ func (h *SourceHandler) ListSources(c *gin.Context) {
 		return
 	}
 
-	model.SendSuccess(c, result)
+	model.SendPagedSuccess(c, result.List, result.Total, page, size)
 }
 
 // CreateSource 创建数据源

@@ -191,17 +191,12 @@ func (h *CollectorHandler) CollectBatchData(c *gin.Context) {
 // validateCollectRequest validates the data token and source for a collect request.
 // Returns the source, token record, or an error (the error response is already sent to the client).
 func (h *CollectorHandler) validateCollectRequest(ctx context.Context, c *gin.Context, rawToken string) (*model.DataSource, *model.DataToken, error) {
-	// 优先使用 HMAC-SHA256 哈希查找
+	// 使用 HMAC-SHA256 哈希查找 Token
 	tokenHash := hmacSHA256(rawToken)
 	tokenRecord, err := h.store.GetTokenByHash(ctx, tokenHash)
 	if err != nil {
-		// 回退到 plain SHA-256 兼容旧 token
-		legacyHash := plainSHA256(rawToken)
-		tokenRecord, err = h.store.GetTokenByHash(ctx, legacyHash)
-		if err != nil {
-			model.SendError(c, http.StatusUnauthorized, model.CodeInvalidToken, "")
-			return nil, nil, err
-		}
+		model.SendError(c, http.StatusUnauthorized, model.CodeInvalidToken, "")
+		return nil, nil, err
 	}
 
 	if tokenRecord.Status == 0 {

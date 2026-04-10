@@ -44,18 +44,13 @@ func APIKeyAuthMiddleware(store storage.DataStore, requiredPerm string) gin.Hand
 
 		ctx := c.Request.Context()
 
-		// 计算 API Key 哈希并查找（兼容新旧哈希）
+		// 计算 API Key HMAC-SHA256 哈希并查找
 		keyHash := hmacSHA256(apiKey)
 		keyRecord, err := store.GetApiKeyByHash(ctx, keyHash)
 		if err != nil {
-			// 回退到 plain SHA-256 兼容旧 API Key
-			legacyHash := plainSHA256(apiKey)
-			keyRecord, err = store.GetApiKeyByHash(ctx, legacyHash)
-			if err != nil {
-				model.SendError(c, http.StatusUnauthorized, model.CodeInvalidAPIKey, "")
-				c.Abort()
-				return
-			}
+			model.SendError(c, http.StatusUnauthorized, model.CodeInvalidAPIKey, "")
+			c.Abort()
+			return
 		}
 
 		// 检查过期

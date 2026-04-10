@@ -30,7 +30,7 @@ RUN CGO_ENABLED=1 GOOS=linux go build -ldflags "-s -w" -o datacollector ./cmd/se
 # 阶段3：运行
 FROM alpine:3.19
 
-RUN apk add --no-cache ca-certificates tzdata
+RUN apk add --no-cache ca-certificates tzdata curl
 
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 

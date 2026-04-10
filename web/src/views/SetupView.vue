@@ -114,6 +114,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { checkSetupStatus, testDatabase, initialize } from '@/api/setup'
+import { isPasswordValid, getPasswordError } from '@/utils/validation'
 
 const router = useRouter()
 
@@ -153,11 +154,12 @@ const isStep1Valid = computed(() => {
 })
 
 const isStep2Valid = computed(() => {
-  return adminUsername.value.trim() !== '' && adminPassword.value.length >= 6 && adminPassword.value === adminPasswordConfirm.value
+  return adminUsername.value.trim() !== '' && isPasswordValid(adminPassword.value) && adminPassword.value === adminPasswordConfirm.value
 })
 
 const passwordError = computed(() => {
-  if (adminPassword.value && adminPassword.value.length < 6) return '密码至少需要6位'
+  const err = getPasswordError(adminPassword.value)
+  if (adminPassword.value && err) return err
   if (adminPasswordConfirm.value && adminPassword.value !== adminPasswordConfirm.value) return '两次输入的密码不一致'
   return ''
 })
