@@ -4,6 +4,8 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/datacollector/datacollector/internal/auth"
 	"github.com/datacollector/datacollector/internal/model"
@@ -11,10 +13,24 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const (
+	maxLoginFailures   = 5
+	loginLockoutWindow = 15 * time.Minute
+)
+
+// loginAttempt 记录登录失败
+type loginAttempt struct {
+	failures int
+	lockedAt time.Time
+}
+
 // AuthHandler 认证处理器
 type AuthHandler struct {
 	store      storage.DataStore
 	jwtManager *auth.JWTManager
+
+	mu       sync.Mutex
+	attempts map[string]*loginAttempt // username -> attempt
 }
 
 // NewAuthHandler 创建新的认证处理器
@@ -22,6 +38,7 @@ func NewAuthHandler(store storage.DataStore, jwtManager *auth.JWTManager) *AuthH
 	return &AuthHandler{
 		store:      store,
 		jwtManager: jwtManager,
+		attempts:   make(map[string]*loginAttempt),
 	}
 }
 
@@ -43,6 +60,48 @@ type LoginResponse struct {
 	ExpiresIn int64  `json:"expires_in"`
 }
 
+// isAccountLocked 检查账户是否被锁定
+func (h *AuthHandler) isAccountLocked(username string) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	attempt, ok := h.attempts[username]
+	if !ok {
+		return false
+	}
+	if attempt.failures >= maxLoginFailures {
+		if time.Since(attempt.lockedAt) < loginLockoutWindow {
+			return true
+		}
+		// 锁定窗口已过，重置
+		delete(h.attempts, username)
+	}
+	return false
+}
+
+// recordLoginFailure 记录登录失败
+func (h *AuthHandler) recordLoginFailure(username string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	attempt, ok := h.attempts[username]
+	if !ok {
+		attempt = &loginAttempt{}
+		h.attempts[username] = attempt
+	}
+	attempt.failures++
+	if attempt.failures >= maxLoginFailures {
+		attempt.lockedAt = time.Now()
+	}
+}
+
+// clearLoginFailures 清除登录失败记录
+func (h *AuthHandler) clearLoginFailures(username string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	delete(h.attempts, username)
+}
+
 // Login 用户登录
 // POST /api/v1/admin/login
 func (h *AuthHandler) Login(c *gin.Context) {
@@ -52,15 +111,23 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
+	// 检查账户是否被锁定
+	if h.isAccountLocked(req.Username) {
+		model.SendError(c, http.StatusTooManyRequests, model.CodeRateLimitExceeded, "账户已被锁定，请稍后再试")
+		return
+	}
+
 	// 获取用户
 	user, err := h.store.GetUserByUsername(c.Request.Context(), req.Username)
 	if err != nil {
+		h.recordLoginFailure(req.Username)
 		model.SendError(c, http.StatusUnauthorized, model.CodeLoginFailed, "")
 		return
 	}
 
 	// 验证密码
 	if !auth.CheckPassword(req.Password, user.PasswordHash) {
+		h.recordLoginFailure(req.Username)
 		model.SendError(c, http.StatusUnauthorized, model.CodeLoginFailed, "")
 		return
 	}
@@ -70,6 +137,9 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		model.SendError(c, http.StatusForbidden, model.CodePermissionDenied, "")
 		return
 	}
+
+	// 登录成功，清除失败记录
+	h.clearLoginFailures(req.Username)
 
 	// 生成 JWT
 	token, expiresIn, err := h.jwtManager.GenerateToken(user.ID, user.Username, user.Role)
@@ -173,4 +243,3 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 
 	model.SendSuccess(c, nil)
 }
-

@@ -2,7 +2,6 @@ package api
 
 import (
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/hex"
 	"net/http"
 	"strconv"
@@ -48,17 +47,16 @@ type UpdateApiKeyPermissionsRequest struct {
 
 // generateApiKey 生成随机 API Key 明文
 func generateApiKey() (string, error) {
-	bytes := make([]byte, 24)
+	bytes := make([]byte, 32)
 	if _, err := rand.Read(bytes); err != nil {
 		return "", err
 	}
 	return "ak_" + hex.EncodeToString(bytes), nil
 }
 
-// hashApiKey 计算 API Key 的 SHA-256 哈希
+// hashApiKey 计算 API Key 的 HMAC-SHA256 哈希
 func hashApiKey(key string) string {
-	hash := sha256.Sum256([]byte(key))
-	return hex.EncodeToString(hash[:])
+	return hmacSHA256(key)
 }
 
 // CreateApiKey 创建 API Key

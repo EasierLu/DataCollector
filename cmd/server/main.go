@@ -81,8 +81,11 @@ func runSetupOnly(cfg *config.Config, logger *slog.Logger, restartChan chan stru
 	server.ServeSPA(engine, logger)
 
 	httpServer := &http.Server{
-		Addr:    fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
-		Handler: engine,
+		Addr:         fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
+		Handler:      engine,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 30 * time.Second,
+		IdleTimeout:  60 * time.Second,
 	}
 
 	go func() {
@@ -116,6 +119,9 @@ func runSetupOnly(cfg *config.Config, logger *slog.Logger, restartChan chan stru
 func runFull(cfg *config.Config, logger *slog.Logger, restartChan chan struct{}, quit chan os.Signal) bool {
 	// 校验 JWT 密钥
 	validateJWTSecret(cfg, logger)
+
+	// 初始化 HMAC key（用于 API Key / Token 哈希）
+	api.SetHMACKey(cfg.JWT.Secret)
 
 	// 创建数据目录和日志目录
 	ensureDirectories(cfg, logger)
@@ -170,15 +176,31 @@ func runFull(cfg *config.Config, logger *slog.Logger, restartChan chan struct{},
 	srv.Setup(configPath, restartChan)
 
 	httpServer := &http.Server{
-		Addr:    fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
-		Handler: srv.Engine(),
+		Addr:         fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
+		Handler:      srv.Engine(),
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 30 * time.Second,
+		IdleTimeout:  60 * time.Second,
 	}
 
 	go func() {
-		logger.Info("HTTP server starting", "address", httpServer.Addr)
-		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Error("HTTP server error", "error", err)
-			os.Exit(1)
+		if cfg.TLS.Enabled {
+			logger.Info("HTTPS server starting", "address", httpServer.Addr,
+				"cert", cfg.TLS.CertFile, "key", cfg.TLS.KeyFile)
+			if err := httpServer.ListenAndServeTLS(cfg.TLS.CertFile, cfg.TLS.KeyFile); err != nil && err != http.ErrServerClosed {
+				logger.Error("HTTPS server error", "error", err)
+				os.Exit(1)
+			}
+		} else {
+			if cfg.Server.Mode == "release" {
+				logger.Warn("TLS is disabled in release mode, this is insecure for production. " +
+					"Set tls.enabled=true and provide cert/key files in config.yaml")
+			}
+			logger.Info("HTTP server starting", "address", httpServer.Addr)
+			if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				logger.Error("HTTP server error", "error", err)
+				os.Exit(1)
+			}
 		}
 	}()
 

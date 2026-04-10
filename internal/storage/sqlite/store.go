@@ -99,6 +99,17 @@ func splitSQL(sql string) []string {
 	return result
 }
 
+// allowedTables 白名单：仅允许重置的表名
+var allowedTables = map[string]bool{
+	"data_records":   true,
+	"statistics":     true,
+	"data_tokens":    true,
+	"api_keys":       true,
+	"data_sources":   true,
+	"users":          true,
+	"system_configs": true,
+}
+
 // ResetAllData 清除所有业务数据（用于重新初始化）
 func (s *SQLiteStore) ResetAllData(ctx context.Context) error {
 	s.mu.Lock()
@@ -116,6 +127,9 @@ func (s *SQLiteStore) ResetAllData(ctx context.Context) error {
 	}
 
 	for _, table := range tables {
+		if !allowedTables[table] {
+			return fmt.Errorf("table %q is not in the allowed reset list", table)
+		}
 		if _, err := s.db.ExecContext(ctx, "DELETE FROM "+table); err != nil {
 			return fmt.Errorf("failed to clear table %s: %w", table, err)
 		}

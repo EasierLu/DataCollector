@@ -52,9 +52,10 @@ func (rl *RateLimiter) Allow(key string, rps float64, burst int) bool {
 	} else {
 		entry.lastSeen = time.Now()
 	}
+	allowed := entry.limiter.Allow()
 	rl.mu.Unlock()
 
-	return entry.limiter.Allow()
+	return allowed
 }
 
 // cleanupRoutine 定期清理 5 分钟内无访问的桶

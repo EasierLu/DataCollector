@@ -93,14 +93,14 @@ func (h *SetupHandler) TestDatabase(c *gin.Context) {
 		return
 	}
 
-	// 构建连接字符串
+	// 构建连接字符串（密码仅用于连接，不出现在日志/错误消息中）
 	dsn := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable connect_timeout=5",
 		req.Host, req.Port, req.User, req.Password, req.DBName)
 
 	// 尝试连接
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {
-		model.SendError(c, http.StatusOK, model.CodeInitFailed, "connection failed: "+err.Error())
+		model.SendError(c, http.StatusOK, model.CodeInitFailed, "connection failed: unable to open database")
 		return
 	}
 	defer db.Close()
@@ -110,7 +110,7 @@ func (h *SetupHandler) TestDatabase(c *gin.Context) {
 	defer cancel()
 
 	if err := db.PingContext(ctx); err != nil {
-		model.SendError(c, http.StatusOK, model.CodeInitFailed, "connection failed: "+err.Error())
+		model.SendError(c, http.StatusOK, model.CodeInitFailed, "connection failed: unable to reach database")
 		return
 	}
 

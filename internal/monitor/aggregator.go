@@ -16,26 +16,30 @@ type StatEvent = collector.StatEvent
 
 // Aggregator 统计聚合器
 type Aggregator struct {
-	store    storage.DataStore
-	logger   *slog.Logger
-	eventCh  chan StatEvent
-	hub      *WebSocketHub // WebSocket 推送中心
+	store   storage.DataStore
+	logger  *slog.Logger
+	eventCh chan StatEvent
+	hub     *WebSocketHub // WebSocket 推送中心
 
-	mu       sync.Mutex
-	counters map[int64]int64 // sourceID -> count（内存中的增量）
+	mu            sync.Mutex
+	counters      map[int64]int64 // sourceID -> count（内存中的增量）
+	failureCounts map[int64]int   // sourceID -> 连续 flush 失败次数
 
 	stopCh chan struct{}
 }
 
+const maxFlushRetries = 5 // 连续 flush 失败超过此次数后丢弃数据
+
 // NewAggregator 创建新的统计聚合器
 func NewAggregator(store storage.DataStore, hub *WebSocketHub, logger *slog.Logger) *Aggregator {
 	return &Aggregator{
-		store:    store,
-		hub:      hub,
-		logger:   logger,
-		eventCh:  make(chan StatEvent, 1000),
-		counters: make(map[int64]int64),
-		stopCh:   make(chan struct{}),
+		store:         store,
+		hub:           hub,
+		logger:        logger,
+		eventCh:       make(chan StatEvent, 1000),
+		counters:      make(map[int64]int64),
+		failureCounts: make(map[int64]int),
+		stopCh:        make(chan struct{}),
 	}
 }
 
@@ -115,14 +119,31 @@ func (a *Aggregator) flush(ctx context.Context) {
 	// 持久化到数据库（单次 SQL 调用）
 	for sourceID, count := range countersToFlush {
 		if err := a.store.IncrementStatCountBy(ctx, sourceID, today, count); err != nil {
-			a.logger.Error("failed to increment stat count, recovering counters",
-				"error", err,
-				"source_id", sourceID,
-				"count", count,
-				"date", today,
-			)
 			a.mu.Lock()
-			a.counters[sourceID] += count
+			a.failureCounts[sourceID]++
+			failures := a.failureCounts[sourceID]
+			if failures >= maxFlushRetries {
+				a.logger.Error("flush failed too many times, discarding counters",
+					"source_id", sourceID,
+					"count", count,
+					"failures", failures,
+					"date", today,
+				)
+				delete(a.failureCounts, sourceID)
+			} else {
+				a.counters[sourceID] += count
+				a.logger.Error("failed to increment stat count, will retry",
+					"error", err,
+					"source_id", sourceID,
+					"count", count,
+					"retry", failures,
+					"date", today,
+				)
+			}
+			a.mu.Unlock()
+		} else {
+			a.mu.Lock()
+			delete(a.failureCounts, sourceID)
 			a.mu.Unlock()
 		}
 	}

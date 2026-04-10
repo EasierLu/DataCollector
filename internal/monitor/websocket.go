@@ -26,9 +26,10 @@ type WebSocketHub struct {
 
 // Client 代表一个 WebSocket 客户端连接
 type Client struct {
-	hub  *WebSocketHub
-	conn *websocket.Conn
-	send chan []byte
+	hub       *WebSocketHub
+	conn      *websocket.Conn
+	send      chan []byte
+	closeOnce sync.Once
 }
 
 // WSMessage WebSocket 消息格式
@@ -42,6 +43,13 @@ type StatsUpdateData struct {
 	SourceID   int64     `json:"source_id"`
 	TodayCount int64     `json:"today_count"`
 	Timestamp  time.Time `json:"timestamp"`
+}
+
+// closeSend 安全关闭 client 的 send channel，保证只关闭一次
+func (c *Client) closeSend() {
+	c.closeOnce.Do(func() {
+		close(c.send)
+	})
 }
 
 func newUpgrader(allowedOrigins []string) websocket.Upgrader {
@@ -83,7 +91,7 @@ func (h *WebSocketHub) Run() {
 		case <-h.stopCh:
 			h.mu.Lock()
 			for client := range h.clients {
-				close(client.send)
+				client.closeSend()
 				client.conn.Close()
 				delete(h.clients, client)
 			}
@@ -100,7 +108,7 @@ func (h *WebSocketHub) Run() {
 			h.mu.Lock()
 			if _, ok := h.clients[client]; ok {
 				delete(h.clients, client)
-				close(client.send)
+				client.closeSend()
 			}
 			h.mu.Unlock()
 			h.logger.Debug("client unregistered", "client_count", len(h.clients))
@@ -121,7 +129,7 @@ func (h *WebSocketHub) Run() {
 					h.mu.Lock()
 					if _, ok := h.clients[client]; ok {
 						delete(h.clients, client)
-						close(client.send)
+						client.closeSend()
 						client.conn.Close()
 					}
 					h.mu.Unlock()

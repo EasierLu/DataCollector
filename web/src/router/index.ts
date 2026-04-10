@@ -47,6 +47,10 @@ router.beforeEach(async (to) => {
   const authStore = useAuthStore()
 
   if (to.meta.guest) {
+    // 已登录用户访问 guest 页面（login/setup）时重定向到仪表板
+    if (authStore.token && !authStore.isTokenExpired()) {
+      return { name: 'Dashboard' }
+    }
     return true
   }
 

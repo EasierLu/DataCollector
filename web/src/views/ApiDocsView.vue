@@ -3,7 +3,17 @@ import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import apiDocsMd from '@/docs/api.md?raw'
 
-const renderedHtml = DOMPurify.sanitize(marked(apiDocsMd) as string)
+const renderedHtml = DOMPurify.sanitize(marked(apiDocsMd) as string, {
+  ALLOWED_TAGS: [
+    'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+    'p', 'br', 'hr',
+    'ul', 'ol', 'li',
+    'blockquote', 'pre', 'code',
+    'table', 'thead', 'tbody', 'tr', 'th', 'td',
+    'strong', 'em', 'del', 'a', 'span',
+  ],
+  ALLOWED_ATTR: ['href', 'target', 'rel', 'class', 'id'],
+})
 </script>
 
 <template>

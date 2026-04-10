@@ -61,7 +61,7 @@ func (s *Server) Setup(configPath string, restartChan chan<- struct{}) {
 	// 注册全局中间件
 	s.engine.Use(gin.Recovery())
 	s.engine.Use(middleware.RequestLoggerMiddleware(s.logger))
-	s.engine.Use(middleware.CORSMiddleware(s.config.Collector.AllowedOrigins))
+	s.engine.Use(middleware.CORSMiddleware(s.config.Collector.AllowedOrigins, s.logger))
 	s.engine.Use(middleware.BodySizeLimitMiddleware(s.config.Collector.MaxBodySize))
 	s.engine.Use(middleware.MaxBytesErrorHandler())
 

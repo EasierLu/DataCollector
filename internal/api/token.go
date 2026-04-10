@@ -2,7 +2,6 @@ package api
 
 import (
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/hex"
 	"net/http"
 	"strconv"
@@ -46,19 +45,18 @@ type CreateTokenResponse struct {
 	CreatedAt time.Time  `json:"created_at"`
 }
 
-// generateRandomToken 生成随机 token
+// generateRandomToken 生成随机 token（256 bits）
 func generateRandomToken() (string, error) {
-	bytes := make([]byte, 16)
+	bytes := make([]byte, 32)
 	if _, err := rand.Read(bytes); err != nil {
 		return "", err
 	}
 	return "dt_" + hex.EncodeToString(bytes), nil
 }
 
-// hashToken 计算 token 的 SHA-256 哈希
+// hashToken 计算 token 的 HMAC-SHA256 哈希
 func hashToken(token string) string {
-	hash := sha256.Sum256([]byte(token))
-	return hex.EncodeToString(hash[:])
+	return hmacSHA256(token)
 }
 
 // CreateToken 创建 Token

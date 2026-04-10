@@ -20,7 +20,7 @@ request.interceptors.request.use((config) => {
   return config
 })
 
-// 响应拦截器：解包响应、处理 401
+// 响应拦截器：解包响应、处理错误
 request.interceptors.response.use(
   (response) => {
     if (response.config.responseType === 'blob') {
@@ -33,10 +33,15 @@ request.interceptors.response.use(
     return res.data
   },
   (error) => {
-    if (error.response?.status === 401) {
+    const status = error.response?.status
+    if (status === 401) {
       const authStore = useAuthStore()
       authStore.clearToken()
       router.push('/login')
+    } else if (status === 403) {
+      return Promise.reject(new Error('没有权限执行此操作'))
+    } else if (status === 429) {
+      return Promise.reject(new Error('请求频率过高，请稍后再试'))
     }
     const msg = error.response?.data?.message || error.message || '网络错误'
     return Promise.reject(new Error(msg))
